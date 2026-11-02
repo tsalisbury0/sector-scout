@@ -1,3 +1,4 @@
+import 'package:cell_tower_monitor/desktop/desktop_config.dart';
 import 'package:cell_tower_monitor/screens/desktop_home.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   testWidgets('the desktop window starts empty and offers to watch a phone',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: DesktopHome()));
+    await tester.pumpWidget(MaterialApp(home: DesktopHome(config: DesktopConfig())));
 
     expect(find.text('Sector Scout'), findsOneWidget);
     expect(find.text('Desktop'), findsOneWidget);
@@ -18,7 +19,7 @@ void main() {
   });
 
   testWidgets('watching a phone asks for its address', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: DesktopHome()));
+    await tester.pumpWidget(MaterialApp(home: DesktopHome(config: DesktopConfig())));
 
     await tester.tap(find.widgetWithText(FilledButton, 'Watch phone'));
     await tester.pumpAndSettle();

@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../desktop/desktop_config.dart';
+import '../desktop/scenario.dart';
+import '../desktop/test_source.dart';
 import '../models/cell_snapshot.dart';
 import '../services/remote_client.dart';
 import '../services/serving_view.dart';
@@ -13,7 +16,10 @@ import '../widgets/tech_badge.dart';
 /// sit side by side instead of stacking. It draws the same [ServingView] rows
 /// and the same widgets as the phone, so the two cannot drift apart.
 class DesktopHome extends StatefulWidget {
-  const DesktopHome({super.key});
+  const DesktopHome({super.key, this.config});
+
+  /// Tests pass their own, so they never read the real profile.
+  final DesktopConfig? config;
 
   @override
   State<DesktopHome> createState() => _DesktopHomeState();
@@ -21,17 +27,35 @@ class DesktopHome extends StatefulWidget {
 
 class _DesktopHomeState extends State<DesktopHome> {
   final List<_Peer> _peers = <_Peer>[];
+  late final DesktopConfig _config;
+  final DesktopTestSource _source = DesktopTestSource();
+  late String _scenarioId;
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
+    _config = widget.config ?? DesktopConfig.load();
+
+    // The phones and the scenario are what the console remembered, so the
+    // window comes back the way it was left.
+    // A config written by the Python console names its own scenarios, so an
+    // id this build does not know falls back to the first preset.
+    _scenarioId = Scenario.byId(_config.scenarioId)?.id ?? Scenario.presets.first.id;
+    _source.scenario = Scenario.byId(_scenarioId) ?? Scenario.presets.first;
+    for (final address in _config.phones) {
+      _peers.add(_Peer(address));
+    }
+    unawaited(_source.start());
+
     _timer = Timer.periodic(const Duration(seconds: 2), (_) => _pollAll());
+    if (_peers.isNotEmpty) unawaited(_pollAll());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(_source.stop());
     for (final peer in _peers) {
       peer.client.dispose();
     }
@@ -62,6 +86,7 @@ class _DesktopHomeState extends State<DesktopHome> {
     );
     if (address == null || address.trim().isEmpty) return;
     setState(() => _peers.add(_Peer(address.trim())));
+    unawaited(_saveConfig());
     await _pollAll();
   }
 
@@ -70,6 +95,35 @@ class _DesktopHomeState extends State<DesktopHome> {
       peer.client.dispose();
     }
     setState(_peers.clear);
+    unawaited(_saveConfig());
+  }
+
+  /// Remembers the watched phones and the served scenario.
+  Future<void> _saveConfig() async {
+    _config.phones
+      ..clear()
+      ..addAll(_peers.map((peer) => peer.address));
+    _config.scenarioId = _scenarioId;
+    await _config.save();
+  }
+
+  void _selectScenario(String id) {
+    final scenario = Scenario.byId(id);
+    if (scenario == null) return;
+    setState(() {
+      _scenarioId = id;
+      _source.scenario = scenario;
+    });
+    unawaited(_saveConfig());
+  }
+
+  Future<void> _toggleSource() async {
+    if (_source.running) {
+      await _source.stop();
+    } else {
+      await _source.start();
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -81,6 +135,14 @@ class _DesktopHomeState extends State<DesktopHome> {
       body: Column(
         children: [
           _TopBar(onAdd: _addPhone, onClear: _clear, onRefresh: _pollAll),
+          _SourceBar(
+            scenarioId: _scenarioId,
+            running: _source.running,
+            uri: _source.uri,
+            failure: _source.failure,
+            onScenario: _selectScenario,
+            onToggle: _toggleSource,
+          ),
           Expanded(
             child: _peers.isEmpty
                 ? const _EmptyState()
@@ -185,6 +247,83 @@ class _TopBar extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.accent,
               foregroundColor: AppColors.background,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The test source: pick a scenario, serve it on the phones' own port.
+class _SourceBar extends StatelessWidget {
+  const _SourceBar({
+    required this.scenarioId,
+    required this.running,
+    required this.uri,
+    required this.failure,
+    required this.onScenario,
+    required this.onToggle,
+  });
+
+  final String scenarioId;
+  final bool running;
+  final Uri? uri;
+  final String? failure;
+  final ValueChanged<String> onScenario;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      decoration: const BoxDecoration(
+        color: AppColors.surfaceAlt,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Test source',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 12),
+          DropdownButton<String>(
+            value: scenarioId,
+            dropdownColor: AppColors.surface,
+            underline: const SizedBox.shrink(),
+            style: const TextStyle(fontSize: 12.5, color: AppColors.textPrimary),
+            items: [
+              for (final scenario in Scenario.presets)
+                DropdownMenuItem(value: scenario.id, child: Text(scenario.name)),
+            ],
+            onChanged: (value) {
+              if (value != null) onScenario(value);
+            },
+          ),
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: onToggle,
+            style: FilledButton.styleFrom(
+              backgroundColor: running ? AppColors.surface : AppColors.accent,
+              foregroundColor: running ? AppColors.textPrimary : AppColors.background,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(running ? 'Stop' : 'Serve'),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              running
+                  ? '${uri ?? ""}  ·  a phone can Watch this address'
+                  : failure == null
+                      ? 'not serving'
+                      : 'port ${DesktopTestSource.defaultPort} is taken: $failure',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                color: running ? AppColors.accent : AppColors.textMuted,
+              ),
             ),
           ),
         ],
