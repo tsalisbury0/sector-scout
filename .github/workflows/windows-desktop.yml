@@ -76,21 +76,10 @@ jobs:
           git commit -m "Windows build log"
           git push -f "https://x-access-token:$env:TOKEN@github.com/${{ github.repository }}.git" ci-build-log
 
-      - name: Package the folder
-        shell: pwsh
-        run: |
-          $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release |
-            Where-Object { Test-Path (Join-Path $_.FullName "sector_scout.exe") -or (Test-Path (Join-Path $_.FullName "SectorScout.exe")) } |
-            Select-Object -First 1
-          if (-not $release) {
-            $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release | Select-Object -First 1
-          }
-          Write-Host "packaging $($release.FullName)"
-          Compress-Archive -Path "$($release.FullName)\*" -DestinationPath sector-scout-windows.zip -Force
-          Get-Item sector-scout-windows.zip | Select-Object Name, Length
-
       - uses: actions/upload-artifact@v4
         with:
           name: sector-scout-windows
-          path: sector-scout-windows.zip
+          # upload-artifact zips a directory itself, so the release folder goes
+          # up as it is built: exe, DLLs, data and all.
+          path: build/windows/x64/runner/Release/**
           if-no-files-found: error
