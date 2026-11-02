@@ -1,0 +1,92 @@
+name: Release
+
+# The APK and the desktop package are built here and attached to a GitHub
+# Release. Nothing built is committed: the repository holds source only.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Fetch packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build the release APK
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk              "sector-scout-${version}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: sector-scout-*.apk
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the console
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          root="sector-scout-desktop-${version}"
+          mkdir -p "$root/desktop"
+          cp desktop/sector_scout_desktop.py desktop/sector_scout.ico "$root/desktop/"
+          # The script looks for bands.json one folder above itself.
+          cp bands.json "$root/bands.json"
+          cat > "$root/README.txt" <<'TXT'
+          Sector Scout Desktop
+          
+          Needs Python 3 on Windows. There is nothing to install: the console
+          uses tkinter, which ships with Python.
+          
+              python desktop\sector_scout_desktop.py
+          
+          Use pythonw.exe instead of python.exe to start it without a console
+          window. Keep bands.json in the folder above desktop\, where the script
+          looks for it.
+          
+          It answers the same /snapshot JSON as the phone, on port 41729, and
+          polls phones that have LAN or Bluetooth sharing turned on.
+          TXT
+          cd "$root/.." && zip -r "$root.zip" "$root"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-zip
+          path: sector-scout-desktop-*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

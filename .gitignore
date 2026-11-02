@@ -55,3 +55,6 @@ __pycache__/
 # Android build output not covered by the root /build/ rule
 android/app/build/
 *.apk
+
+# Per-machine launcher; the release ships its own instructions
+*.lnk
