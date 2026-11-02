@@ -42,9 +42,31 @@ import tkinter as tk
 from tkinter import ttk
 
 APP_DIR = Path(__file__).resolve().parent
+
+
+def _data_file(name: str) -> Path:
+    """Where a file shipped with the app lives.
+
+    From the repository, `sector_scout.ico` sits beside this script and
+    `bands.json`/`plmns.json` one folder up. A PyInstaller build has neither
+    layout: the executable's own folder, and the bundle's unpack directory,
+    are what matter there. The first candidate that exists wins, so one
+    script works in both places.
+    """
+    roots = [APP_DIR, APP_DIR.parent]
+    if getattr(sys, "frozen", False):
+        roots.insert(0, Path(sys.executable).resolve().parent)
+        bundle = getattr(sys, "_MEIPASS", None)
+        if bundle:
+            roots.insert(0, Path(bundle))
+    for root in roots:
+        candidate = root / name
+        if candidate.is_file():
+            return candidate
+    return roots[0] / name
 CONFIG_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "Sector Scout"
 CONFIG_FILE = CONFIG_DIR / "desktop.json"
-ICON_FILE = APP_DIR / "sector_scout.ico"
+ICON_FILE = _data_file("sector_scout.ico")
 
 # The app's palette, so the two look like one product.
 BG = "#070A0F"
@@ -106,7 +128,7 @@ def nr_mhz(arfcn: int | None) -> float | None:
 # from `bands.json` — the same file `tool/gen_bands.py` compiles into the app's
 # Dart table. One source, so the source can only dial a band the phone can
 # decode, and a channel means the same frequency on both ends.
-BANDS_FILE = APP_DIR.parent / "bands.json"
+BANDS_FILE = _data_file("bands.json")
 
 
 def _load_bands() -> tuple[dict[int, dict], dict[int, dict]]:
@@ -252,7 +274,16 @@ CARRIER_URLS = [
     "https://raw.githubusercontent.com/tsalisbury0/private_plmn/main/carriers.json",
     "https://raw.githubusercontent.com/tsalisbury0/private_plmn/master/plmns.json",
 ]
-CARRIER_CACHE = APP_DIR / "carrier_names.json"
+# A frozen build cannot write beside its own executable when it is
+# installed under Program Files, so the cache goes with the config.
+CARRIER_CACHE = (
+    CONFIG_DIR if getattr(sys, "frozen", False) else APP_DIR
+) / "carrier_names.json"
+if getattr(sys, "frozen", False):
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 CARRIER_REFRESH_SECONDS = 24 * 3600
 CARRIER_BRANDS: dict[str, str] = {}
 
@@ -1095,7 +1126,7 @@ def carrier_choices() -> list[tuple[str, str]]:
     """
     choices: list[tuple[str, str]] = []
     try:
-        raw = json.loads((APP_DIR.parent / "plmns.json").read_text(encoding="utf-8"))
+        raw = json.loads(_data_file("plmns.json").read_text(encoding="utf-8"))
         for entry in raw:
             mcc = str(entry.get("mcc") or "")
             mnc = str(entry.get("mnc") or "")

@@ -12,6 +12,9 @@ page:
 
 **[Download the latest release](https://github.com/tsalisbury0/sector-scout/releases/latest)**
 
+- **Windows app** — `Sector Scout Desktop Setup <version>.exe`. Run the
+  installer and it appears in the Start menu; it needs no Python and no
+  anything else installed.
 - **Android app** — `sector-scout-<version>.apk`. Sideload it: open the file on
   the phone and allow installs from that source. It is signed with Android's
   debug key, so it installs fine but is not a Play Store upload.
