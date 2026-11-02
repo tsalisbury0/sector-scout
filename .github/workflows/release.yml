@@ -52,6 +52,7 @@ jobs:
           root="sector-scout-desktop-${version}"
           mkdir -p "$root/desktop"
           cp desktop/sector_scout_desktop.py desktop/sector_scout.ico "$root/desktop/"
+          cp desktop/requirements.txt "$root/desktop/"
           # The script looks for bands.json one folder above itself.
           cp bands.json "$root/bands.json"
           cat > "$root/README.txt" <<'TXT'
@@ -65,6 +66,10 @@ jobs:
           Use pythonw.exe instead of python.exe to start it without a console
           window. Keep bands.json in the folder above desktop\, where the script
           looks for it.
+
+          Bluetooth sharing and watching need one extra package:
+
+              pip install -r desktop/requirements.txt
           
           It answers the same /snapshot JSON as the phone, on port 41729, and
           polls phones that have LAN or Bluetooth sharing turned on.

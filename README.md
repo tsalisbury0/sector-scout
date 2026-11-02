@@ -22,7 +22,9 @@ page:
   python desktop\sector_scout_desktop.py
   ```
 
-  Python 3 is all it needs; there is nothing to install.
+  Python 3 is all it needs. Bluetooth sharing and watching need one extra
+  package: `pip install -r desktop/requirements.txt`. Everything else is
+  standard library.
 
 ## What the app shows
 

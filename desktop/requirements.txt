@@ -1,0 +1,7 @@
+# Everything the desktop console needs beyond the standard library.
+#
+# Only Bluetooth sharing and watching use this: the test source, LAN polling
+# and the window itself run on Python's own modules (tkinter, ctypes,
+# http.server), so the console starts without it and simply disables the
+# Bluetooth buttons.
+bleak>=3.0
