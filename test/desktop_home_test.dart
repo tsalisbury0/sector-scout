@@ -25,7 +25,7 @@ void main() {
 
     expect(find.text('Watch a phone'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.textContaining('41729'), findsOneWidget);
+    expect(find.textContaining('A bare IP uses port 41729'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await tester.pumpAndSettle();
