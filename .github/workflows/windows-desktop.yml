@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -27,6 +27,15 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Enable Developer Mode
+        shell: pwsh
+        # Flutter needs to create plugin symlinks, which Windows only allows
+        # with Developer Mode on (or an elevated process). The runner is admin.
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+          New-Item -ItemType SymbolicLink -Path symlink-proof -Target pubspec.yaml | Out-Null
+          if (Test-Path symlink-proof) { Write-Host "symlinks work" } else { exit 1 }
 
       - name: Fetch packages
         run: flutter pub get
@@ -49,13 +58,23 @@ jobs:
       - name: Publish the log when the build fails
         if: failure()
         shell: pwsh
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Build failed. Last 120 lines:"
           if (Test-Path build-windows.log) {
             Get-Content build-windows.log -Tail 120 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-          } else {
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "no log was written"
           }
+          # The run log needs a login; a public branch does not, so the whole
+          # log is parked there for whoever is diagnosing the failure.
+          if (-not (Test-Path build-windows.log)) { "no log written" | Out-File build-windows.log }
+          git config user.name "ci"
+          git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan ci-build-log
+          git rm -rf --cached . | Out-Null
+          git add -f build-windows.log
+          git commit -m "Windows build log"
+          git push -f "https://x-access-token:$env:TOKEN@github.com/${{ github.repository }}.git" ci-build-log
 
       - name: Package the folder
         shell: pwsh
