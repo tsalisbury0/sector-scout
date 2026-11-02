@@ -58,3 +58,7 @@ android/app/build/
 
 # Per-machine launcher; the release ships its own instructions
 *.lnk
+
+# .NET build output
+windows/**/bin/
+windows/**/obj/

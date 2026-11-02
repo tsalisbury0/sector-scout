@@ -79,6 +79,21 @@ that release.
 - **Phones** — polls phones that have sharing turned on and draws their readings
   side by side, which the phone app cannot do (it watches one peer at a time).
 
+## Native Windows app
+
+`windows/SectorScout` is the console rewritten for Windows in .NET 10 with WPF:
+a real executable, no Python at runtime. It reads the same `bands.json`, serves
+the same test source on 41729 and draws one card per phone side by side. Build
+and run it with:
+
+```
+dotnet build windows/SectorScout/SectorScout.csproj -c Release
+```
+
+It covers watching phones over Wi-Fi and the test source. Bluetooth watching,
+the scenario editor and the display corrections are still only in the Python
+console for now.
+
 ## Permissions
 
 Android treats cell data as location data, so the app needs **fine location**

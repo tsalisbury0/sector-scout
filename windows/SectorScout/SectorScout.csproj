@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>SectorScout</AssemblyName>
+    <RootNamespace>SectorScout</RootNamespace>
+    <ApplicationIcon>..\..\desktop\sector_scout.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Company>tsalisbury0</Company>
+    <Product>Sector Scout Desktop</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\bands.json" Link="bands.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\plmns.json" Link="plmns.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\desktop\sector_scout.ico" Link="sector_scout.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+<Application x:Class="SectorScout.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <SolidColorBrush x:Key="WindowBg" Color="#FF070A0F" />
+    <SolidColorBrush x:Key="SurfaceBg" Color="#FF111823" />
+    <SolidColorBrush x:Key="SurfaceAltBg" Color="#FF0D1420" />
+    <SolidColorBrush x:Key="LineColor" Color="#FF1E293B" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#FFF1F5F9" />
+    <SolidColorBrush x:Key="TextMuted" Color="#FF94A3B8" />
+    <SolidColorBrush x:Key="AccentColor" Color="#FF34D399" />
+    <SolidColorBrush x:Key="WarningColor" Color="#FFFBBF24" />
+  </Application.Resources>
+</Application>

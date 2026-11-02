@@ -1,0 +1,46 @@
+<Window x:Class="SectorScout.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sector Scout" Height="780" Width="1320"
+        MinHeight="420" MinWidth="720"
+        Background="{StaticResource WindowBg}"
+        Foreground="{StaticResource TextPrimary}"
+        FontFamily="Segoe UI Variable Text, Segoe UI"
+        WindowStartupLocation="CenterScreen">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="{StaticResource SurfaceBg}"
+            BorderBrush="{StaticResource LineColor}" BorderThickness="0,0,0,1" Padding="14,10">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="Phone or address" VerticalAlignment="Center"
+                   Foreground="{StaticResource TextMuted}" Margin="0,0,10,0" />
+        <TextBox x:Name="AddressBox" Width="240" VerticalAlignment="Center"
+                 Background="{StaticResource SurfaceAltBg}"
+                 Foreground="{StaticResource TextPrimary}"
+                 BorderBrush="{StaticResource LineColor}" Padding="8,6" />
+        <Button x:Name="AddButton" Content="Watch phone" Margin="8,0,0,0" Padding="14,6"
+                Background="{StaticResource SurfaceAltBg}" Foreground="{StaticResource TextPrimary}"
+                BorderBrush="{StaticResource LineColor}" />
+        <Button x:Name="ClearButton" Content="Clear" Margin="8,0,0,0" Padding="14,6"
+                Background="{StaticResource SurfaceAltBg}" Foreground="{StaticResource TextPrimary}"
+                BorderBrush="{StaticResource LineColor}" />
+        <TextBlock x:Name="SourceText" VerticalAlignment="Center" Margin="18,0,0,0"
+                   Foreground="{StaticResource TextMuted}" FontSize="12" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="6">
+      <WrapPanel x:Name="CardsHost" Orientation="Horizontal" />
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Background="{StaticResource SurfaceBg}"
+            BorderBrush="{StaticResource LineColor}" BorderThickness="0,1,0,0" Padding="14,8">
+      <TextBlock x:Name="FooterText" Foreground="{StaticResource TextMuted}" FontSize="12" />
+    </Border>
+  </Grid>
+</Window>
