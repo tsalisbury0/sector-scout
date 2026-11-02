@@ -2,6 +2,12 @@
 cmake_minimum_required(VERSION 3.14)
 project(cell_tower_monitor LANGUAGES CXX)
 
+# permission_handler_windows still uses /await and <experimental/coroutine>,
+# which the current MSVC STL turns into a hard error (STL1011). The silence
+# macro is Microsoft's documented way to keep such a plugin building; drop
+# this once that plugin no longer needs it.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "cell_tower_monitor")
