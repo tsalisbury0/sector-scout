@@ -79,15 +79,34 @@ that release.
 - **Phones** — polls phones that have sharing turned on and draws their readings
   side by side, which the phone app cannot do (it watches one peer at a time).
 
+## Desktop
+
+The desktop build is the same Flutter app: on Windows it opens
+`lib/screens/desktop_home.dart` instead of the phone screen, which draws one
+card per watched phone side by side using the same `ServingView` rows,
+`SignalBars` and `TechBadge` the phone uses, so the two cannot drift apart.
+
+```
+flutter run -d windows
+flutter build windows --release
+```
+
+Watching a phone is the same as on the handset: the peer must have sharing on,
+and the desktop polls `http://<phone>:41729/snapshot` every two seconds.
+
+Building for Windows needs Visual Studio's **Desktop development with C++**
+workload; Flutter's doctor reports the toolchain as incomplete until it is
+installed.
+
 ## Native Windows app
 
-`windows/SectorScout` is the console rewritten for Windows in .NET 10 with WPF:
+`native/SectorScout` is the console rewritten for Windows in .NET 10 with WPF:
 a real executable, no Python at runtime. It reads the same `bands.json`, serves
 the same test source on 41729 and draws one card per phone side by side. Build
 and run it with:
 
 ```
-dotnet build windows/SectorScout/SectorScout.csproj -c Release
+dotnet build native/SectorScout/SectorScout.csproj -c Release
 ```
 
 It covers watching phones over Wi-Fi and the test source. Bluetooth watching,

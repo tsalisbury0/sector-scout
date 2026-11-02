@@ -1,29 +1,45 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'screens/desktop_home.dart';
 import 'screens/home_screen.dart';
 import 'services/app_settings.dart';
 import 'theme/app_colors.dart';
+
+bool get _isDesktop =>
+    Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The band switches decide how the first frame labels a cell, so they are
   // read before the app is built rather than flipping the labels a moment in.
-  await AppSettings.load();
+  // The band switches live in Android's preferences, read over a channel
+  // that does not exist on a desktop, so the defaults stand there.
+  try {
+    await AppSettings.load();
+  } catch (_) {
+    // No native side (Windows, Linux, macOS).
+  }
   // Portrait only: the dashboard is a single column, and rotating the phone
   // mid-read (or while it is being screenshotted) only relayouts it.
-  await SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.portraitUp,
-  ]);
+  if (!_isDesktop) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+  }
   // Draw behind the system bars so the dark theme reaches the screen edges.
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: AppColors.background,
-    systemNavigationBarIconBrightness: Brightness.light,
-    systemNavigationBarDividerColor: Colors.transparent,
-  ));
+  if (!_isDesktop) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: AppColors.background,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ));
+  }
   runApp(const CellTowerApp());
 }
 
@@ -54,7 +70,7 @@ class CellTowerApp extends StatelessWidget {
               displayColor: AppColors.textPrimary,
             ),
       ),
-      home: const HomeScreen(),
+      home: _isDesktop ? const DesktopHome() : const HomeScreen(),
     );
   }
 }

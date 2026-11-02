@@ -62,3 +62,9 @@ android/app/build/
 # .NET build output
 windows/**/bin/
 windows/**/obj/
+
+# Flutter desktop runner
+windows/flutter/ephemeral/
+# .NET build output (native app kept as a fallback)
+native/**/bin/
+native/**/obj/
