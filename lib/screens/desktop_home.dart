@@ -56,47 +56,10 @@ class _DesktopHomeState extends State<DesktopHome> {
   }
 
   Future<void> _addPhone() async {
-    final controller = TextEditingController();
     final address = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Watch a phone'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Address of a phone with sharing turned on. A bare IP uses port '
-              '41729; 127.0.0.1 watches this PC.',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              style: const TextStyle(color: AppColors.textPrimary),
-              decoration: const InputDecoration(
-                hintText: '10.1.1.47',
-                hintStyle: TextStyle(color: AppColors.textMuted),
-              ),
-              onSubmitted: (value) => Navigator.of(context).pop(value),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Watch'),
-          ),
-        ],
-      ),
+      builder: (context) => const _AddPhoneDialog(),
     );
-    controller.dispose();
     if (address == null || address.trim().isEmpty) return;
     setState(() => _peers.add(_Peer(address.trim())));
     await _pollAll();
@@ -261,6 +224,67 @@ class _EmptyState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Asks for a peer's address.
+///
+/// It owns its controller: disposing one as soon as [showDialog] returns
+/// throws, because the dialog's exit animation still rebuilds the field.
+class _AddPhoneDialog extends StatefulWidget {
+  const _AddPhoneDialog();
+
+  @override
+  State<_AddPhoneDialog> createState() => _AddPhoneDialogState();
+}
+
+class _AddPhoneDialogState extends State<_AddPhoneDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text('Watch a phone'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Address of a phone with sharing turned on. A bare IP uses port '
+            '41729; 127.0.0.1 watches this PC.',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: '10.1.1.47',
+              hintStyle: TextStyle(color: AppColors.textMuted),
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Watch'),
+        ),
+      ],
     );
   }
 }
