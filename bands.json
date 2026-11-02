@@ -1,0 +1,1163 @@
+{
+ "source": {
+  "lte": "3GPP TS 36.101 Table 5.7.3-1",
+  "nr": "3GPP TS 38.104 Table 5.2-1/2",
+  "via": "https://github.com/hoon/arfcn (MIT)"
+ },
+ "lte": [
+  {
+   "band": 1,
+   "first": 0,
+   "last": 599,
+   "dlLow": 2110.0,
+   "ulLow": 1920.0,
+   "ulHigh": 1980.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 2,
+   "first": 600,
+   "last": 1199,
+   "dlLow": 1930.0,
+   "ulLow": 1850.0,
+   "ulHigh": 1910.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 3,
+   "first": 1200,
+   "last": 1949,
+   "dlLow": 1805.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1785.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 4,
+   "first": 1950,
+   "last": 2399,
+   "dlLow": 2110.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1755.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 5,
+   "first": 2400,
+   "last": 2649,
+   "dlLow": 869.0,
+   "ulLow": 824.0,
+   "ulHigh": 849.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 6,
+   "first": 2650,
+   "last": 2749,
+   "dlLow": 875.0,
+   "ulLow": 830.0,
+   "ulHigh": 840.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 7,
+   "first": 2750,
+   "last": 3449,
+   "dlLow": 2620.0,
+   "ulLow": 2500.0,
+   "ulHigh": 2570.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 8,
+   "first": 3450,
+   "last": 3799,
+   "dlLow": 925.0,
+   "ulLow": 880.0,
+   "ulHigh": 915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 9,
+   "first": 3800,
+   "last": 4149,
+   "dlLow": 1844.9,
+   "ulLow": 1749.9,
+   "ulHigh": 1784.9,
+   "mode": "FDD"
+  },
+  {
+   "band": 10,
+   "first": 4150,
+   "last": 4749,
+   "dlLow": 2110.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1770.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 11,
+   "first": 4750,
+   "last": 4949,
+   "dlLow": 1475.9,
+   "ulLow": 1427.9,
+   "ulHigh": 1447.9,
+   "mode": "FDD"
+  },
+  {
+   "band": 12,
+   "first": 5010,
+   "last": 5179,
+   "dlLow": 729.0,
+   "ulLow": 699.0,
+   "ulHigh": 716.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 13,
+   "first": 5180,
+   "last": 5279,
+   "dlLow": 746.0,
+   "ulLow": 777.0,
+   "ulHigh": 787.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 14,
+   "first": 5280,
+   "last": 5379,
+   "dlLow": 758.0,
+   "ulLow": 788.0,
+   "ulHigh": 798.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 17,
+   "first": 5730,
+   "last": 5849,
+   "dlLow": 734.0,
+   "ulLow": 704.0,
+   "ulHigh": 716.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 18,
+   "first": 5850,
+   "last": 5999,
+   "dlLow": 860.0,
+   "ulLow": 815.0,
+   "ulHigh": 830.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 19,
+   "first": 6000,
+   "last": 6149,
+   "dlLow": 875.0,
+   "ulLow": 830.0,
+   "ulHigh": 845.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 20,
+   "first": 6150,
+   "last": 6449,
+   "dlLow": 791.0,
+   "ulLow": 832.0,
+   "ulHigh": 862.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 21,
+   "first": 6450,
+   "last": 6599,
+   "dlLow": 1495.9,
+   "ulLow": 1447.9,
+   "ulHigh": 1462.9,
+   "mode": "FDD"
+  },
+  {
+   "band": 22,
+   "first": 6600,
+   "last": 7399,
+   "dlLow": 3510.0,
+   "ulLow": 3410.0,
+   "ulHigh": 3490.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 23,
+   "first": 7500,
+   "last": 7699,
+   "dlLow": 2180.0,
+   "ulLow": 2000.0,
+   "ulHigh": 2020.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 24,
+   "first": 7700,
+   "last": 8039,
+   "dlLow": 1525.0,
+   "ulLow": 1626.5,
+   "ulHigh": 1660.5,
+   "mode": "FDD"
+  },
+  {
+   "band": 25,
+   "first": 8040,
+   "last": 8689,
+   "dlLow": 1930.0,
+   "ulLow": 1850.0,
+   "ulHigh": 1915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 26,
+   "first": 8690,
+   "last": 9039,
+   "dlLow": 859.0,
+   "ulLow": 814.0,
+   "ulHigh": 849.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 27,
+   "first": 9040,
+   "last": 9209,
+   "dlLow": 852.0,
+   "ulLow": 807.0,
+   "ulHigh": 824.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 28,
+   "first": 9210,
+   "last": 9659,
+   "dlLow": 758.0,
+   "ulLow": 703.0,
+   "ulHigh": 748.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 29,
+   "first": 9660,
+   "last": 9769,
+   "dlLow": 717.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 30,
+   "first": 9770,
+   "last": 9869,
+   "dlLow": 2350.0,
+   "ulLow": 2305.0,
+   "ulHigh": 2315.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 31,
+   "first": 9870,
+   "last": 9919,
+   "dlLow": 462.5,
+   "ulLow": 452.5,
+   "ulHigh": 457.5,
+   "mode": "FDD"
+  },
+  {
+   "band": 32,
+   "first": 9920,
+   "last": 10359,
+   "dlLow": 1452.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 33,
+   "first": 36000,
+   "last": 36199,
+   "dlLow": 1900.0,
+   "ulLow": 1900.0,
+   "ulHigh": 1920.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 34,
+   "first": 36200,
+   "last": 36349,
+   "dlLow": 2010.0,
+   "ulLow": 2010.0,
+   "ulHigh": 2025.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 35,
+   "first": 36350,
+   "last": 36949,
+   "dlLow": 1850.0,
+   "ulLow": 1850.0,
+   "ulHigh": 1910.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 36,
+   "first": 36950,
+   "last": 37549,
+   "dlLow": 1930.0,
+   "ulLow": 1930.0,
+   "ulHigh": 1990.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 37,
+   "first": 37550,
+   "last": 37749,
+   "dlLow": 1910.0,
+   "ulLow": 1910.0,
+   "ulHigh": 1930.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 38,
+   "first": 37750,
+   "last": 38249,
+   "dlLow": 2570.0,
+   "ulLow": 2570.0,
+   "ulHigh": 2620.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 39,
+   "first": 38250,
+   "last": 38649,
+   "dlLow": 1880.0,
+   "ulLow": 1880.0,
+   "ulHigh": 1920.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 40,
+   "first": 38650,
+   "last": 39649,
+   "dlLow": 2300.0,
+   "ulLow": 2300.0,
+   "ulHigh": 2400.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 41,
+   "first": 39650,
+   "last": 41589,
+   "dlLow": 2496.0,
+   "ulLow": 2496.0,
+   "ulHigh": 2690.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 42,
+   "first": 41590,
+   "last": 43589,
+   "dlLow": 3400.0,
+   "ulLow": 3400.0,
+   "ulHigh": 3600.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 43,
+   "first": 43590,
+   "last": 45589,
+   "dlLow": 3600.0,
+   "ulLow": 3600.0,
+   "ulHigh": 3800.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 44,
+   "first": 45590,
+   "last": 46589,
+   "dlLow": 703.0,
+   "ulLow": 703.0,
+   "ulHigh": 803.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 45,
+   "first": 46590,
+   "last": 46789,
+   "dlLow": 1447.0,
+   "ulLow": 1447.0,
+   "ulHigh": 1467.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 46,
+   "first": 46790,
+   "last": 54539,
+   "dlLow": 5150.0,
+   "ulLow": 5150.0,
+   "ulHigh": 5925.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 47,
+   "first": 54540,
+   "last": 55239,
+   "dlLow": 5855.0,
+   "ulLow": 5855.0,
+   "ulHigh": 5925.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 48,
+   "first": 55240,
+   "last": 56739,
+   "dlLow": 3550.0,
+   "ulLow": 3550.0,
+   "ulHigh": 3700.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 49,
+   "first": 56740,
+   "last": 58239,
+   "dlLow": 3550.0,
+   "ulLow": 3550.0,
+   "ulHigh": 3700.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 50,
+   "first": 58240,
+   "last": 59089,
+   "dlLow": 1432.0,
+   "ulLow": 1432.0,
+   "ulHigh": 1517.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 51,
+   "first": 59090,
+   "last": 59139,
+   "dlLow": 1427.0,
+   "ulLow": 1427.0,
+   "ulHigh": 1432.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 52,
+   "first": 59140,
+   "last": 60139,
+   "dlLow": 3300.0,
+   "ulLow": 3300.0,
+   "ulHigh": 3400.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 53,
+   "first": 60140,
+   "last": 60254,
+   "dlLow": 2483.5,
+   "ulLow": 2483.5,
+   "ulHigh": 2495.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 54,
+   "first": 60255,
+   "last": 60304,
+   "dlLow": 1670.0,
+   "ulLow": 1670.0,
+   "ulHigh": 1675.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 65,
+   "first": 65536,
+   "last": 66435,
+   "dlLow": 2110.0,
+   "ulLow": 1920.0,
+   "ulHigh": 2010.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 66,
+   "first": 66436,
+   "last": 67335,
+   "dlLow": 2110.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1780.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 67,
+   "first": 67336,
+   "last": 67535,
+   "dlLow": 738.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 68,
+   "first": 67536,
+   "last": 67835,
+   "dlLow": 753.0,
+   "ulLow": 698.0,
+   "ulHigh": 728.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 69,
+   "first": 67836,
+   "last": 68335,
+   "dlLow": 2570.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 70,
+   "first": 68336,
+   "last": 68585,
+   "dlLow": 1995.0,
+   "ulLow": 1695.0,
+   "ulHigh": 1710.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 71,
+   "first": 68586,
+   "last": 68935,
+   "dlLow": 617.0,
+   "ulLow": 663.0,
+   "ulHigh": 698.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 72,
+   "first": 68936,
+   "last": 68985,
+   "dlLow": 461.0,
+   "ulLow": 451.0,
+   "ulHigh": 456.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 73,
+   "first": 68986,
+   "last": 69035,
+   "dlLow": 460.0,
+   "ulLow": 450.0,
+   "ulHigh": 455.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 74,
+   "first": 69036,
+   "last": 69465,
+   "dlLow": 1475.0,
+   "ulLow": 1427.0,
+   "ulHigh": 1470.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 75,
+   "first": 69466,
+   "last": 70315,
+   "dlLow": 1432.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 76,
+   "first": 70316,
+   "last": 70365,
+   "dlLow": 1427.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 85,
+   "first": 70366,
+   "last": 70545,
+   "dlLow": 728.0,
+   "ulLow": 698.0,
+   "ulHigh": 716.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 87,
+   "first": 70546,
+   "last": 70595,
+   "dlLow": 420.0,
+   "ulLow": 410.0,
+   "ulHigh": 415.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 88,
+   "first": 70596,
+   "last": 70645,
+   "dlLow": 422.0,
+   "ulLow": 412.0,
+   "ulHigh": 417.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 103,
+   "first": 70646,
+   "last": 70655,
+   "dlLow": 757.0,
+   "ulLow": 787.0,
+   "ulHigh": 788.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 106,
+   "first": 70656,
+   "last": 70705,
+   "dlLow": 935.0,
+   "ulLow": 896.0,
+   "ulHigh": 901.0,
+   "mode": "FDD"
+  }
+ ],
+ "nr": [
+  {
+   "band": 1,
+   "first": 422000,
+   "last": 434000,
+   "dlLow": 2110.0,
+   "ulLow": 1920.0,
+   "ulHigh": 1980.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 2,
+   "first": 386000,
+   "last": 398000,
+   "dlLow": 1930.0,
+   "ulLow": 1850.0,
+   "ulHigh": 1910.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 3,
+   "first": 361000,
+   "last": 376000,
+   "dlLow": 1805.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1785.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 5,
+   "first": 173800,
+   "last": 178800,
+   "dlLow": 869.0,
+   "ulLow": 824.0,
+   "ulHigh": 849.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 7,
+   "first": 524000,
+   "last": 538000,
+   "dlLow": 2620.0,
+   "ulLow": 2500.0,
+   "ulHigh": 2570.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 8,
+   "first": 185000,
+   "last": 192000,
+   "dlLow": 925.0,
+   "ulLow": 880.0,
+   "ulHigh": 915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 12,
+   "first": 145800,
+   "last": 149200,
+   "dlLow": 729.0,
+   "ulLow": 699.0,
+   "ulHigh": 716.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 13,
+   "first": 149200,
+   "last": 151200,
+   "dlLow": 746.0,
+   "ulLow": 777.0,
+   "ulHigh": 787.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 14,
+   "first": 151600,
+   "last": 153600,
+   "dlLow": 758.0,
+   "ulLow": 788.0,
+   "ulHigh": 798.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 18,
+   "first": 172000,
+   "last": 175000,
+   "dlLow": 860.0,
+   "ulLow": 815.0,
+   "ulHigh": 830.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 20,
+   "first": 158200,
+   "last": 164200,
+   "dlLow": 791.0,
+   "ulLow": 832.0,
+   "ulHigh": 862.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 24,
+   "first": 305000,
+   "last": 311800,
+   "dlLow": 1525.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 25,
+   "first": 386000,
+   "last": 399000,
+   "dlLow": 1930.0,
+   "ulLow": 1850.0,
+   "ulHigh": 1915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 26,
+   "first": 171800,
+   "last": 178800,
+   "dlLow": 859.0,
+   "ulLow": 814.0,
+   "ulHigh": 849.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 28,
+   "first": 151600,
+   "last": 160600,
+   "dlLow": 758.0,
+   "ulLow": 703.0,
+   "ulHigh": 748.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 29,
+   "first": 143400,
+   "last": 145600,
+   "dlLow": 717.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 30,
+   "first": 470000,
+   "last": 472000,
+   "dlLow": 2350.0,
+   "ulLow": 2305.0,
+   "ulHigh": 2315.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 34,
+   "first": 402000,
+   "last": 405000,
+   "dlLow": 2010.0,
+   "ulLow": 2010.0,
+   "ulHigh": 2025.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 38,
+   "first": 514000,
+   "last": 524000,
+   "dlLow": 2570.0,
+   "ulLow": 2570.0,
+   "ulHigh": 2620.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 39,
+   "first": 376000,
+   "last": 384000,
+   "dlLow": 1880.0,
+   "ulLow": 1880.0,
+   "ulHigh": 1920.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 40,
+   "first": 460000,
+   "last": 480000,
+   "dlLow": 2300.0,
+   "ulLow": 2300.0,
+   "ulHigh": 2400.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 41,
+   "first": 499200,
+   "last": 538000,
+   "dlLow": 2496.0,
+   "ulLow": 2496.0,
+   "ulHigh": 2690.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 46,
+   "first": 743333,
+   "last": 795000,
+   "dlLow": 5150.0,
+   "ulLow": 5150.0,
+   "ulHigh": 5925.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 48,
+   "first": 636667,
+   "last": 646667,
+   "dlLow": 3550.0,
+   "ulLow": 3550.0,
+   "ulHigh": 3700.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 50,
+   "first": 286400,
+   "last": 303400,
+   "dlLow": 1432.0,
+   "ulLow": 1432.0,
+   "ulHigh": 1517.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 51,
+   "first": 285400,
+   "last": 286400,
+   "dlLow": 1427.0,
+   "ulLow": 1427.0,
+   "ulHigh": 1432.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 54,
+   "first": 334000,
+   "last": 335000,
+   "dlLow": 1670.0,
+   "ulLow": 1670.0,
+   "ulHigh": 1675.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 65,
+   "first": 422000,
+   "last": 440000,
+   "dlLow": 2110.0,
+   "ulLow": 1920.0,
+   "ulHigh": 2010.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 66,
+   "first": 422000,
+   "last": 440000,
+   "dlLow": 2110.0,
+   "ulLow": 1710.0,
+   "ulHigh": 1780.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 67,
+   "first": 147600,
+   "last": 151600,
+   "dlLow": 738.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 70,
+   "first": 399000,
+   "last": 404000,
+   "dlLow": 1995.0,
+   "ulLow": 1695.0,
+   "ulHigh": 1710.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 71,
+   "first": 123400,
+   "last": 130400,
+   "dlLow": 617.0,
+   "ulLow": 663.0,
+   "ulHigh": 698.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 72,
+   "first": 92200,
+   "last": 93200,
+   "dlLow": 461.0,
+   "ulLow": 451.0,
+   "ulHigh": 456.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 74,
+   "first": 295000,
+   "last": 303600,
+   "dlLow": 1475.0,
+   "ulLow": 1427.0,
+   "ulHigh": 1470.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 75,
+   "first": 286400,
+   "last": 303400,
+   "dlLow": 1432.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 76,
+   "first": 285400,
+   "last": 286400,
+   "dlLow": 1427.0,
+   "ulLow": null,
+   "ulHigh": null,
+   "mode": "SDL"
+  },
+  {
+   "band": 77,
+   "first": 620000,
+   "last": 680000,
+   "dlLow": 3300.0,
+   "ulLow": 3300.0,
+   "ulHigh": 4200.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 78,
+   "first": 620000,
+   "last": 653333,
+   "dlLow": 3300.0,
+   "ulLow": 3300.0,
+   "ulHigh": 3800.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 79,
+   "first": 693333,
+   "last": 733333,
+   "dlLow": 4400.0,
+   "ulLow": 4400.0,
+   "ulHigh": 5000.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 85,
+   "first": 145600,
+   "last": 149200,
+   "dlLow": 728.0,
+   "ulLow": 698.0,
+   "ulHigh": 716.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 90,
+   "first": 499200,
+   "last": 538000,
+   "dlLow": 2496.0,
+   "ulLow": 2496.0,
+   "ulHigh": 2690.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 91,
+   "first": 285400,
+   "last": 286400,
+   "dlLow": 1427.0,
+   "ulLow": 832.0,
+   "ulHigh": 862.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 92,
+   "first": 286400,
+   "last": 303400,
+   "dlLow": 1432.0,
+   "ulLow": 832.0,
+   "ulHigh": 862.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 93,
+   "first": 285400,
+   "last": 286400,
+   "dlLow": 1427.0,
+   "ulLow": 880.0,
+   "ulHigh": 915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 94,
+   "first": 286400,
+   "last": 303400,
+   "dlLow": 1432.0,
+   "ulLow": 880.0,
+   "ulHigh": 915.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 96,
+   "first": 795000,
+   "last": 875000,
+   "dlLow": 5925.0,
+   "ulLow": 5925.0,
+   "ulHigh": 7125.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 101,
+   "first": 380000,
+   "last": 382000,
+   "dlLow": 1900.0,
+   "ulLow": 1900.0,
+   "ulHigh": 1910.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 102,
+   "first": 795000,
+   "last": 828333,
+   "dlLow": 5925.0,
+   "ulLow": 5925.0,
+   "ulHigh": 6425.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 104,
+   "first": 828333,
+   "last": 875000,
+   "dlLow": 6425.0,
+   "ulLow": 6425.0,
+   "ulHigh": 7125.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 105,
+   "first": 122400,
+   "last": 130400,
+   "dlLow": 612.0,
+   "ulLow": 663.0,
+   "ulHigh": 703.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 106,
+   "first": 187000,
+   "last": 188000,
+   "dlLow": 935.0,
+   "ulLow": 896.0,
+   "ulHigh": 901.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 109,
+   "first": 286400,
+   "last": 303400,
+   "dlLow": 1432.0,
+   "ulLow": 703.0,
+   "ulHigh": 733.0,
+   "mode": "FDD"
+  },
+  {
+   "band": 257,
+   "first": 2054166,
+   "last": 2104166,
+   "dlLow": 26500.0,
+   "ulLow": 26500.0,
+   "ulHigh": 29500.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 258,
+   "first": 2016667,
+   "last": 2070832,
+   "dlLow": 24250.0,
+   "ulLow": 24250.0,
+   "ulHigh": 27500.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 259,
+   "first": 2270832,
+   "last": 2337499,
+   "dlLow": 39500.0,
+   "ulLow": 39500.0,
+   "ulHigh": 43500.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 260,
+   "first": 2229166,
+   "last": 2279166,
+   "dlLow": 37000.0,
+   "ulLow": 37000.0,
+   "ulHigh": 40000.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 261,
+   "first": 2070832,
+   "last": 2084999,
+   "dlLow": 27500.0,
+   "ulLow": 27500.0,
+   "ulHigh": 28350.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 262,
+   "first": 2399166,
+   "last": 2415832,
+   "dlLow": 47200.0,
+   "ulLow": 47200.0,
+   "ulHigh": 48200.0,
+   "mode": "TDD"
+  },
+  {
+   "band": 263,
+   "first": 2562499,
+   "last": 2795832,
+   "dlLow": 57000.0,
+   "ulLow": 57000.0,
+   "ulHigh": 71000.0,
+   "mode": "TDD"
+  }
+ ]
+}

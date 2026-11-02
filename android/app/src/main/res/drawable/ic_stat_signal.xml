@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Status-bar icon: four ascending signal bars, white so Android can tint
+         it. Notification icons must be a flat silhouette. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,21h4v-5H2V21zM8,21h4V10H8V21zM14,21h4V5h-4V21zM20,21h2V1h-2V21z" />
+</vector>

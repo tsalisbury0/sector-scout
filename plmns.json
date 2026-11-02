@@ -1,0 +1,10 @@
+[
+  { "mcc": "310", "mnc": "410", "brand": "AT&T" },
+  { "mcc": "310", "mnc": "260", "brand": "T-Mobile" },
+  { "mcc": "311", "mnc": "480", "brand": "Verizon" },
+  { "mcc": "311", "mnc": "970", "brand": "Big River" },
+  { "mcc": "313", "mnc": "100", "brand": "FirstNet" },
+  { "mcc": "313", "mnc": "700", "brand": "Ameren" },
+  { "mcc": "310", "mnc": "830", "brand": "T-Satellite" },
+  { "mcc": "312", "mnc": "190", "brand": "T-911" }
+]

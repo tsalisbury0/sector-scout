@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon background: the sky the mast was photographed against, as a
+     vertical gradient so any launcher mask or parallax stays seamless. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#FF1E8AD2"
+        android:endColor="#FF409CDE" />
+</shape>
