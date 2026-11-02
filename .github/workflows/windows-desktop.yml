@@ -1,0 +1,60 @@
+name: Windows desktop
+
+# The desktop app needs Visual Studio's C++ workload, which the Windows runners
+# already carry, so this builds it there instead of on a dev machine.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lib/**"
+      - "windows/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/windows-desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the Windows app
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Fetch packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build
+        run: flutter build windows --release
+
+      - name: Package the folder
+        shell: pwsh
+        run: |
+          $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release |
+            Where-Object { Test-Path (Join-Path $_.FullName "sector_scout.exe") -or (Test-Path (Join-Path $_.FullName "SectorScout.exe")) } |
+            Select-Object -First 1
+          if (-not $release) {
+            $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release | Select-Object -First 1
+          }
+          Write-Host "packaging $($release.FullName)"
+          Compress-Archive -Path "$($release.FullName)\*" -DestinationPath sector-scout-windows.zip -Force
+          Get-Item sector-scout-windows.zip | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sector-scout-windows
+          path: sector-scout-windows.zip
+          if-no-files-found: error
