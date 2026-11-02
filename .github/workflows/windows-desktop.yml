@@ -21,7 +21,7 @@ jobs:
     name: Build the Windows app
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: subosito/flutter-action@v2
         with:
@@ -89,7 +89,7 @@ jobs:
           Compress-Archive -Path "$($release.FullName)\*" -DestinationPath sector-scout-windows.zip -Force
           Get-Item sector-scout-windows.zip | Select-Object Name, Length
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sector-scout-windows
           path: sector-scout-windows.zip

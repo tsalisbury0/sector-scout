@@ -15,8 +15,8 @@ jobs:
     name: Android APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -35,7 +35,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk              "sector-scout-${version}.apk"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-apk
           path: sector-scout-*.apk
@@ -45,7 +45,7 @@ jobs:
     name: Desktop package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Package the console
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -75,7 +75,7 @@ jobs:
           polls phones that have LAN or Bluetooth sharing turned on.
           TXT
           cd "$root/.." && zip -r "$root.zip" "$root"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: desktop-zip
           path: sector-scout-desktop-*.zip
@@ -85,8 +85,8 @@ jobs:
     name: Windows app
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install the build tools
@@ -98,7 +98,7 @@ jobs:
         run: |
           $version = "${{ github.ref_name }}".TrimStart("v")
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "desktop\Sector Scout Desktop.iss"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: build/installer/*.exe
@@ -109,11 +109,11 @@ jobs:
     needs: [android, desktop, windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: true
