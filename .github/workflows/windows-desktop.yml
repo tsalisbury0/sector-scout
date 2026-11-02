@@ -79,12 +79,11 @@ jobs:
       - name: Package the folder
         shell: pwsh
         run: |
+          # The exe takes BINARY_NAME from windows/CMakeLists.txt.
           $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release |
-            Where-Object { Test-Path (Join-Path $_.FullName "sector_scout.exe") -or (Test-Path (Join-Path $_.FullName "SectorScout.exe")) } |
+            Where-Object { Test-Path (Join-Path $_.FullName "cell_tower_monitor.exe") } |
             Select-Object -First 1
-          if (-not $release) {
-            $release = Get-ChildItem -Path build\windows -Recurse -Directory -Filter Release | Select-Object -First 1
-          }
+          if (-not $release) { Write-Error "no Release folder holds cell_tower_monitor.exe"; exit 1 }
           Write-Host "packaging $($release.FullName)"
           Compress-Archive -Path "$($release.FullName)\*" -DestinationPath sector-scout-windows.zip -Force
           Get-Item sector-scout-windows.zip | Select-Object Name, Length
