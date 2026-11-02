@@ -38,7 +38,24 @@ jobs:
         run: flutter test
 
       - name: Build
-        run: flutter build windows --release
+        id: build
+        shell: pwsh
+        # The failure text is needed even when the build breaks, so it is teed
+        # into a log the next step can publish as the run summary.
+        run: |
+          flutter build windows --release 2>&1 | Tee-Object -FilePath build-windows.log
+          exit $LASTEXITCODE
+
+      - name: Publish the log when the build fails
+        if: failure()
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Build failed. Last 120 lines:"
+          if (Test-Path build-windows.log) {
+            Get-Content build-windows.log -Tail 120 | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          } else {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "no log was written"
+          }
 
       - name: Package the folder
         shell: pwsh
