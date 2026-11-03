@@ -7,6 +7,7 @@ SimReading _sim({
   required String override,
   required List<CellTower> cells,
   String nrState = '',
+  bool nrConnected = false,
 }) =>
     SimReading.fromMap({
       'slotIndex': 1,
@@ -17,6 +18,7 @@ SimReading _sim({
       'networkTypeName': 'LTE',
       'overrideNetworkType': override,
       'nrState': nrState,
+      'nrConnected': nrConnected,
       'cells': [
         for (final cell in cells)
           {
@@ -110,6 +112,20 @@ void main() {
         override: 'NR_NSA',
         cells: [_cell('LTE')],
         nrState: 'CONNECTED',
+      );
+
+      expect(sim.nrServing, isNull);
+      expect(sim.nrConnected, isTrue);
+      expect(badgeForSim(sim), '5G');
+    });
+
+    test('an NR signal part without an NR cell also reads 5G', () {
+      // Some firmwares refuse the hidden NR state call but still put an
+      // NR part in SignalStrength. That is public API, so it counts.
+      final sim = _sim(
+        override: 'NR_NSA',
+        cells: [_cell('LTE')],
+        nrConnected: true,
       );
 
       expect(sim.nrServing, isNull);

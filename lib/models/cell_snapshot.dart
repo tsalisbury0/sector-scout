@@ -660,6 +660,7 @@ class SimReading {
     required this.cells,
     this.overrideNetworkType = 'NONE',
     this.nrState = '',
+    this.nrSignal = false,
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -677,6 +678,7 @@ class SimReading {
           .toList(),
       overrideNetworkType: _string(map['overrideNetworkType']) ?? 'NONE',
       nrState: _string(map['nrState']) ?? '',
+      nrSignal: map['nrConnected'] == true,
     );
   }
 
@@ -700,8 +702,13 @@ class SimReading {
   /// **CONNECTED**, so this is the only evidence that 5G is really up.
   final String nrState;
 
+  /// True when the platform reported an NR signal part without a cell
+  /// (`nrConnected` in the payload: the NR state is connected, or
+  /// `SignalStrength` carried an NR component).
+  final bool nrSignal;
+
   /// True when the platform says the NR leg is connected, cell or no cell.
-  bool get nrConnected => nrState == 'CONNECTED';
+  bool get nrConnected => nrState == 'CONNECTED' || nrSignal;
 
   String get label => 'SIM ${slotIndex + 1}';
 

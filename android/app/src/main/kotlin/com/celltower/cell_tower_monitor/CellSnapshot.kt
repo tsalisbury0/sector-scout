@@ -221,7 +221,15 @@ object CellSnapshot {
         // cell from getAllCellInfo() — Samsung on NZ networks, among
         // others — still answer here, which is what lets the badge claim
         // 5G with no cell to point at.
-        m["nrState"] = nrStateName(nrState(tm))
+        val nrState = nrStateOf(tm)
+        val nrSignal = nrRsrp(tm)
+        m["nrState"] = nrStateName(nrState)
+        // True when the NR leg is up by any evidence the platform gives:
+        // the state says CONNECTED, or SignalStrength carries an NR part.
+        // The second is public API, so it answers on firmware that
+        // refuses the hidden state call.
+        m["nrConnected"] = nrState == NR_STATE_CONNECTED || nrSignal != null
+        if (nrSignal != null) m["nrRsrp"] = nrSignal
         m["plmn"] = ownPlmn
 
         if (BuildConfig.DEBUG) {
@@ -292,14 +300,42 @@ object CellSnapshot {
      * restricted, 3 connected. A hidden API, so it is read reflectively
      * and an absence is simply an empty answer.
      */
-    private fun nrState(tm: TelephonyManager?): Int? {
+    private fun nrStateOf(tm: TelephonyManager?): Int? {
         if (tm == null) return null
+        // ServiceState is the object the state actually lives on; the
+        // TelephonyManager call is a wrapper some firmware does not export.
+        val state = safe { tm.serviceState }
+        if (state != null) {
+            val fromState = try {
+                val method = state.javaClass.methods.firstOrNull { it.name == "getNrState" }
+                method?.invoke(state) as? Int
+            } catch (error: Exception) {
+                null
+            }
+            if (fromState != null) return fromState
+        }
         return try {
             val method = TelephonyManager::class.java.getMethod("getNrState")
             method.invoke(tm) as? Int
         } catch (error: Exception) {
             null
         }
+    }
+
+    /**
+     * The NR component of the signal strength in dBm, when the modem reports one
+     * without exposing an NR cell. `CellSignalStrengthNr` is public API, so this
+     * still answers where the hidden NR state call is refused.
+     */
+    private fun nrRsrp(tm: TelephonyManager?): Int? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val strength = safe { tm?.signalStrength } ?: return null
+        val nr = safe { strength.cellSignalStrengths }
+            ?.filterIsInstance<CellSignalStrengthNr>()
+            ?.firstOrNull() ?: return null
+        val rsrp = safe { nr.ssRsrp }
+        // Int.MAX_VALUE is the framework's "not known" marker.
+        return if (rsrp == null || rsrp == Int.MAX_VALUE) null else rsrp
     }
 
     private fun nrStateName(value: Int?): String = when (value) {
@@ -309,6 +345,9 @@ object CellSnapshot {
         3 -> "CONNECTED"
         else -> ""
     }
+
+    /** `ServiceState`/`TelephonyManager` NR state: the leg is connected. */
+    private val NR_STATE_CONNECTED = 3
 
     /** True when the platform is advertising any active 5G link. */
     private fun isNrOverride(value: Int): Boolean {
