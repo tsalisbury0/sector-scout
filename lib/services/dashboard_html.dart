@@ -369,10 +369,12 @@ class DashboardHtml {
       if (sim.isNsa && nr == null) {
         out.write(
           _foot(
-            'The platform reports 5G is active on this SIM, but the radio is '
-            'not exposing an NR cell right now — Samsung only hands the NR leg '
-            'to apps while it is carrying data. The meter above is the LTE '
-            'anchor.',
+            'The platform reports the NR leg connected (NR state: '
+            '${sim.nrState.isEmpty ? 'not reported' : sim.nrState}) while '
+            'the radio is not exposing an NR cell right now — Samsung only '
+            'hands the NR leg to apps while it is carrying data. The 5G '
+            'badge is the platform’s word, not a cell: the meter above is '
+            'the LTE anchor.',
           ),
         );
       }

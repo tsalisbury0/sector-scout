@@ -3,7 +3,11 @@ import 'package:cell_tower_monitor/services/carrier_names.dart';
 import 'package:cell_tower_monitor/widgets/tech_badge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-SimReading _sim({required String override, required List<CellTower> cells}) =>
+SimReading _sim({
+  required String override,
+  required List<CellTower> cells,
+  String nrState = '',
+}) =>
     SimReading.fromMap({
       'slotIndex': 1,
       'subscriptionId': 2,
@@ -12,6 +16,7 @@ SimReading _sim({required String override, required List<CellTower> cells}) =>
       'simState': 'READY',
       'networkTypeName': 'LTE',
       'overrideNetworkType': override,
+      'nrState': nrState,
       'cells': [
         for (final cell in cells)
           {
@@ -94,6 +99,21 @@ void main() {
     test('an NSA slot with both legs attached shows 5G', () {
       final sim = _sim(override: 'NR_NSA', cells: [_cell('LTE'), _cell('NR')]);
 
+      expect(badgeForSim(sim), '5G');
+    });
+
+    test('NR connected without an NR cell still shows 5G', () {
+      // NZ Samsungs keep the NR cell out of CellInfo while the platform's own
+      // NR state says the leg is CONNECTED. The badge takes the platform's
+      // word; the meter still reads the LTE anchor.
+      final sim = _sim(
+        override: 'NR_NSA',
+        cells: [_cell('LTE')],
+        nrState: 'CONNECTED',
+      );
+
+      expect(sim.nrServing, isNull);
+      expect(sim.nrConnected, isTrue);
       expect(badgeForSim(sim), '5G');
     });
 

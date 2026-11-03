@@ -901,11 +901,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         if (sim.isNsa && nr == null) ...[
           const SizedBox(height: 8),
-          const _FootNote(
-            'The platform reports 5G is active on this SIM, but the radio is '
-            'not exposing an NR cell right now — Samsung only hands the NR leg '
-            'to apps while it is carrying data. The meter above is the LTE '
-            'anchor.',
+          _FootNote(
+            'The platform reports the NR leg connected (NR state: '
+            '${sim.nrState.isEmpty ? 'not reported' : sim.nrState}) while '
+            'the radio is not exposing an NR cell right now — Samsung only '
+            'hands the NR leg to apps while it is carrying data. The 5G '
+            'badge is the platform’s word, not a cell: the meter above is '
+            'the LTE anchor.',
           ),
         ],
         if (sim.isNsa && lte != null && nr != null) ...[
@@ -1181,7 +1183,9 @@ class SimHeaderCard extends StatelessWidget {
               // `4G LTE`, without claiming the 5G colour.
               _TechChip(
                 label: sim.modeLabel,
-                attached: sim.isNsa && nr != null,
+                // Green while the leg is really up: an NR cell attached, or the
+                // platform's own NR state saying CONNECTED.
+                attached: (sim.isNsa && nr != null) || sim.nrConnected,
               ),
             ],
           ),

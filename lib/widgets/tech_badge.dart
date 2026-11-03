@@ -18,9 +18,11 @@ const String _verizon = '311480';
 /// **5G**, **5G+**, **5GUC** or **5GUW**.
 ///
 /// This is the same rule the pinned notification draws its icon with
-/// (`SignalIcon.kt`), so the card and the shade never disagree: 5G is only
-/// claimed when an NR cell is attached to the slot, because Samsung keeps
-/// reporting `NR_NSA` for a while after the 5G leg has gone.
+/// (`SignalIcon.kt`), so the card and the shade never disagree. 5G is
+/// claimed when an NR cell is attached to the slot, or when the platform's
+/// own NR state says the leg is **CONNECTED** even though the modem is
+/// hiding the cell — NZ Samsungs do exactly that. The bare `NR_NSA`
+/// override is still not enough: it lingers after the 5G leg has gone.
 String? techBadgeLabel({
   required String? tech,
   required String override,
@@ -77,7 +79,9 @@ String? badgeForSim(SimReading sim) {
     tech: primary?.tech.raw,
     override: sim.overrideNetworkType,
     plmn: primary?.plmn,
-    nrAttached: sim.nrServing != null,
+    // The NR cell when the radio publishes one; otherwise the platform's
+    // own NR state, where a CONNECTED leg with no cell exposed is still 5G.
+    nrAttached: sim.nrServing != null || sim.nrConnected,
     aggregated: sim.lteAggregated,
   );
   // An eMTC carrier is an LTE radio and nothing more, so the tag wins over the

@@ -217,6 +217,11 @@ object CellSnapshot {
         cells.forEach { cell -> cell["slotIndex"] = sub.slotIndex }
         m["cells"] = cells
         m["overrideNetworkType"] = overrideName(override)
+        // The platform's own word on the NR leg. Modems that hide the NR
+        // cell from getAllCellInfo() — Samsung on NZ networks, among
+        // others — still answer here, which is what lets the badge claim
+        // 5G with no cell to point at.
+        m["nrState"] = nrStateName(nrState(tm))
         m["plmn"] = ownPlmn
 
         if (BuildConfig.DEBUG) {
@@ -281,6 +286,29 @@ object CellSnapshot {
 
     private fun holdLastChannel(serving: List<MutableMap<String, Any?>>) =
         ServingMerge.holdLastChannel(serving)
+
+    /**
+     * `TelephonyManager.getNrState()`: 0 none, 1 restricted, 2 not
+     * restricted, 3 connected. A hidden API, so it is read reflectively
+     * and an absence is simply an empty answer.
+     */
+    private fun nrState(tm: TelephonyManager?): Int? {
+        if (tm == null) return null
+        return try {
+            val method = TelephonyManager::class.java.getMethod("getNrState")
+            method.invoke(tm) as? Int
+        } catch (error: Exception) {
+            null
+        }
+    }
+
+    private fun nrStateName(value: Int?): String = when (value) {
+        0 -> "NONE"
+        1 -> "RESTRICTED"
+        2 -> "NOT_RESTRICTED"
+        3 -> "CONNECTED"
+        else -> ""
+    }
 
     /** True when the platform is advertising any active 5G link. */
     private fun isNrOverride(value: Int): Boolean {

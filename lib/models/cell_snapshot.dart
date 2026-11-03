@@ -659,6 +659,7 @@ class SimReading {
     required this.networkTypeName,
     required this.cells,
     this.overrideNetworkType = 'NONE',
+    this.nrState = '',
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -675,6 +676,7 @@ class SimReading {
           .map(CellTower.fromMap)
           .toList(),
       overrideNetworkType: _string(map['overrideNetworkType']) ?? 'NONE',
+      nrState: _string(map['nrState']) ?? '',
     );
   }
 
@@ -689,6 +691,17 @@ class SimReading {
   /// `TelephonyDisplayInfo.overrideNetworkType`, the value behind the
   /// status-bar 5G / 5G+ indicator: NR_SA, NR_NSA, NR_NSA_MMWAVE, LTE_CA…
   final String overrideNetworkType;
+
+  /// `TelephonyManager.getNrState()`: `NONE`, `RESTRICTED`, `NOT_RESTRICTED`,
+  /// `CONNECTED`, or empty when the platform will not answer.
+  ///
+  /// Some modems — Samsung on Spark NZ among them — keep the NR cell out of
+  /// `getAllCellInfo()` while the platform's own NR state says the leg is
+  /// **CONNECTED**, so this is the only evidence that 5G is really up.
+  final String nrState;
+
+  /// True when the platform says the NR leg is connected, cell or no cell.
+  bool get nrConnected => nrState == 'CONNECTED';
 
   String get label => 'SIM ${slotIndex + 1}';
 

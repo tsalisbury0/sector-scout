@@ -202,7 +202,9 @@ object SignalSummary {
                 tech = primary.tech().ifEmpty { null },
                 override = sim["overrideNetworkType"] as? String ?: "NONE",
                 plmn = plmnOf(primary),
-                nrAttached = nr != null,
+                // NR cell attached, or the platform's NR state connected
+                // with no cell exposed: still 5G.
+                nrAttached = nr != null || nrConnected(sim),
                 aggregated = aggregated,
             )
         }
@@ -256,6 +258,7 @@ object SignalSummary {
         nr: Map<String, Any?>?,
     ): String {
         if (nr != null) return if (lte != null) "5G NSA" else "5G SA"
+        if (lte != null && nrConnected(sim)) return "5G NSA"
         if (lte != null) {
             // LTE-M is still an LTE radio, so only the label changes — and only
             // for networks the operator list tags.
@@ -263,6 +266,10 @@ object SignalSummary {
         }
         return (sim["networkTypeName"] as? String)?.takeIf { it.isNotEmpty() } ?: "No service"
     }
+
+    /** The platform's word on the NR leg, for a modem hiding the cell. */
+    private fun nrConnected(sim: Map<String, Any?>): Boolean =
+        sim["nrState"] == "CONNECTED"
 
     private fun carrierOf(
         sim: Map<String, Any?>,
