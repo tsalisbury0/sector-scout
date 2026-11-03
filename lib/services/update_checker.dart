@@ -297,7 +297,8 @@ class UpdateChecker {
       if (response.statusCode != 200) {
         throw 'GitHub answered ${response.statusCode}';
       }
-      final total = response.contentLength ?? -1;
+      // Unknown lengths come back as -1; the percent shown stays at 0 for those.
+      final total = response.contentLength;
       final sink = apk.openWrite();
       var got = 0;
       var shown = -1;
