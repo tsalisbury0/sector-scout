@@ -271,52 +271,6 @@ class Scenario {
     ),
   ];
 
-  /// A single-carrier reading built from the fields the editor exposes.
-  factory Scenario.custom({
-    required String carrierName,
-    required String mcc,
-    required String mnc,
-    required int band,
-    int? arfcn,
-    int dbm = -90,
-    String override = 'NONE',
-    bool nr = false,
-  }) {
-    final inferred = arfcn ?? _defaultChannel(band, nr);
-    return Scenario(
-      id: 'custom',
-      name: 'Custom',
-      sims: [
-        ScenarioSim(
-          carrierName: carrierName,
-          mcc: mcc,
-          mnc: mnc,
-          override: override,
-          cells: [
-            ScenarioCell(
-              tech: nr ? 'NR' : 'LTE',
-              band: band,
-              arfcn: inferred,
-              dbm: dbm,
-              pci: 100,
-              tac: 12345,
-              enb: nr ? null : 30722,
-              gnb: nr ? 1053255 : null,
-              sector: 36,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// Middle of the band's channel window, so the editor starts somewhere valid.
-  static int? _defaultChannel(int band, bool nr) {
-    const lteChannels = {2: 700, 4: 2200, 5: 2450, 12: 5100, 13: 5230, 41: 40490, 66: 66436, 71: 68586};
-    const nrChannels = {5: 173800, 41: 519000, 71: 126270, 77: 650000, 78: 640000};
-    return (nr ? nrChannels : lteChannels)[band];
-  }
-
   static Scenario? byId(String id) {
     for (final scenario in presets) {
       if (scenario.id == id) return scenario;
@@ -326,4 +280,169 @@ class Scenario {
 
   /// Jitters the level so the bars and the "read Ns ago" line visibly move.
   static int drift(Random random) => random.nextInt(5) - 2;
+}
+
+/// Middle of a band's channel window, so an editor starts somewhere valid.
+int? defaultChannel(int band, bool nr) {
+  const lteChannels = {
+    2: 700,
+    4: 2200,
+    5: 2450,
+    12: 5100,
+    13: 5230,
+    41: 40490,
+    66: 66436,
+    71: 68586,
+  };
+  const nrChannels = {5: 173800, 41: 519000, 71: 126270, 77: 650000, 78: 640000};
+  return (nr ? nrChannels : lteChannels)[band];
+}
+
+/// The custom source the desktop editor builds.
+///
+/// An LTE anchor and an NR leg, each optional, so `B30` on its own, `n5` on its
+/// own and `B30 + n5` are one code path — the shape the console's editor had.
+/// Nothing here is a preset: the bands, channels and levels all come from the
+/// fields, and the override only decides which of the two carriers is sent.
+class CustomSource {
+  const CustomSource({
+    this.carrierName = 'T-Mobile',
+    this.mcc = '310',
+    this.mnc = '260',
+    this.override = 'NR_NSA',
+    this.lteBand = 30,
+    this.lteArfcn = 9820,
+    this.lteDbm = -104,
+    this.nrBand = 5,
+    this.nrArfcn = 176300,
+    this.nrDbm = -98,
+  });
+
+  final String carrierName;
+  final String mcc;
+  final String mnc;
+
+  /// `NONE`, `LTE_CA`, `NR_NSA` or `NR_SA`.
+  final String override;
+
+  /// Null when that carrier is switched off.
+  final int? lteBand;
+  final int? lteArfcn;
+  final int lteDbm;
+  final int? nrBand;
+  final int? nrArfcn;
+  final int nrDbm;
+
+  bool get isNrSa => override == 'NR_SA';
+  bool get isNsa => override == 'NR_NSA';
+
+  bool get sendsLte => !isNrSa && (lteBand ?? 0) > 0;
+  bool get sendsNr =>
+      (override == 'NR_NSA' || override == 'NR_SA') && (nrBand ?? 0) > 0;
+
+  /// What goes on the wire: a source with no NR leg cannot claim NR.
+  String get wireOverride {
+    if (sendsNr) return override;
+    return override == 'LTE_CA' ? 'LTE_CA' : 'NONE';
+  }
+
+  /// `B30 anchor + n5`, the console's own shorthand for what is served.
+  String get summary {
+    final parts = <String>[
+      if (sendsLte) 'B$lteBand anchor',
+      if (sendsNr) 'n$nrBand',
+    ];
+    return parts.isEmpty ? 'no carriers' : parts.join(' + ');
+  }
+
+  Map<String, Object?> toJson() => {
+        'carrier': carrierName,
+        'mcc': mcc,
+        'mnc': mnc,
+        'override': override,
+        'lteBand': lteBand,
+        'lteArfcn': lteArfcn,
+        'lteDbm': lteDbm,
+        'nrBand': nrBand,
+        'nrArfcn': nrArfcn,
+        'nrDbm': nrDbm,
+      };
+
+  /// Tolerant on purpose: a half-written file must not stop the editor from
+  /// opening, and every field falls back to the console's own default.
+  factory CustomSource.fromJson(Object? raw) {
+    const defaults = CustomSource();
+    if (raw is! Map<Object?, Object?>) return defaults;
+
+    int? number(Object? value, int? fallback) {
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value.trim()) ?? fallback;
+      return fallback;
+    }
+
+    String text(String key, String fallback) {
+      final value = raw[key];
+      return value is String && value.trim().isNotEmpty ? value.trim() : fallback;
+    }
+
+    final override = text('override', defaults.override);
+    return CustomSource(
+      carrierName: text('carrier', defaults.carrierName),
+      mcc: text('mcc', defaults.mcc),
+      mnc: text('mnc', defaults.mnc),
+      override: const {'NONE', 'LTE_CA', 'NR_NSA', 'NR_SA'}.contains(override)
+          ? override
+          : defaults.override,
+      lteBand: number(raw['lteBand'], defaults.lteBand),
+      lteArfcn: number(raw['lteArfcn'], defaults.lteArfcn),
+      lteDbm: number(raw['lteDbm'], defaults.lteDbm) ?? defaults.lteDbm,
+      nrBand: number(raw['nrBand'], defaults.nrBand),
+      nrArfcn: number(raw['nrArfcn'], defaults.nrArfcn),
+      nrDbm: number(raw['nrDbm'], defaults.nrDbm) ?? defaults.nrDbm,
+    );
+  }
+
+  Scenario build() {
+    final cells = <ScenarioCell>[
+      if (sendsLte)
+        ScenarioCell(
+          tech: 'LTE',
+          band: lteBand,
+          arfcn: lteArfcn ?? defaultChannel(lteBand!, false),
+          dbm: lteDbm,
+          pci: 76,
+          tac: 12345,
+          enb: 30722,
+          sector: 36,
+        ),
+      if (sendsNr)
+        ScenarioCell(
+          tech: 'NR',
+          band: nrBand,
+          arfcn: nrArfcn ?? defaultChannel(nrBand!, true),
+          dbm: nrDbm,
+          pci: 512,
+          // Under an LTE anchor the radio hands over no NCI, so no gNB and no
+          // sector: that is what makes the app show its estimate rather than a
+          // number no phone would report.
+          tac: isNsa ? null : 12345,
+          gnb: isNsa ? null : 1053255,
+          sector: isNsa ? null : 49,
+        ),
+    ];
+
+    return Scenario(
+      id: 'custom',
+      name: 'Custom ($summary)',
+      sims: [
+        ScenarioSim(
+          carrierName: carrierName.isEmpty ? '$mcc-$mnc' : carrierName,
+          mcc: mcc,
+          mnc: mnc,
+          override: wireOverride,
+          cells: cells,
+        ),
+      ],
+    );
+  }
 }

@@ -6,20 +6,27 @@ import '../desktop/desktop_config.dart';
 import '../desktop/scenario.dart';
 import '../desktop/test_source.dart';
 import '../models/cell_snapshot.dart';
+import '../services/lan_discovery.dart';
 import '../services/remote_client.dart';
 import '../services/serving_view.dart';
 import '../theme/app_colors.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/tech_badge.dart';
 
+import 'custom_source_dialog.dart';
+
 /// The desktop console: every watched phone gets its own card, and the cards
 /// sit side by side instead of stacking. It draws the same [ServingView] rows
 /// and the same widgets as the phone, so the two cannot drift apart.
 class DesktopHome extends StatefulWidget {
-  const DesktopHome({super.key, this.config});
+  const DesktopHome({super.key, this.config, this.scan});
 
   /// Tests pass their own, so they never read the real profile.
   final DesktopConfig? config;
+
+  /// Tests replace the LAN sweep, which otherwise probes every host on the
+  /// subnet and would leave a widget test waiting on the network.
+  final Future<List<LanPeer>> Function()? scan;
 
   @override
   State<DesktopHome> createState() => _DesktopHomeState();
@@ -30,7 +37,12 @@ class _DesktopHomeState extends State<DesktopHome> {
   late final DesktopConfig _config;
   final DesktopTestSource _source = DesktopTestSource();
   late String _scenarioId;
+  late CustomSource _custom;
   Timer? _timer;
+  bool _scanning = false;
+
+  /// What the footer was last told — a sweep's result, mostly.
+  String? _status;
 
   @override
   void initState() {
@@ -40,9 +52,12 @@ class _DesktopHomeState extends State<DesktopHome> {
     // The phones and the scenario are what the console remembered, so the
     // window comes back the way it was left.
     // A config written by the Python console names its own scenarios, so an
-    // id this build does not know falls back to the first preset.
-    _scenarioId = Scenario.byId(_config.scenarioId)?.id ?? Scenario.presets.first.id;
-    _source.scenario = Scenario.byId(_scenarioId) ?? Scenario.presets.first;
+    // id this build does not know falls back to the first preset; the editor's
+    // own source comes back from the fields it saved.
+    _custom = _config.custom;
+    _scenarioId = Scenario.byId(_config.scenarioId)?.id ??
+        (_config.scenarioId == 'custom' ? 'custom' : Scenario.presets.first.id);
+    _source.scenario = _scenarioFor(_scenarioId);
     for (final address in _config.phones) {
       _peers.add(_Peer(address));
     }
@@ -85,7 +100,10 @@ class _DesktopHomeState extends State<DesktopHome> {
       builder: (context) => const _AddPhoneDialog(),
     );
     if (address == null || address.trim().isEmpty) return;
-    setState(() => _peers.add(_Peer(address.trim())));
+    setState(() {
+      _peers.add(_Peer(address.trim()));
+      _status = null;
+    });
     unawaited(_saveConfig());
     await _pollAll();
   }
@@ -94,7 +112,10 @@ class _DesktopHomeState extends State<DesktopHome> {
     for (final peer in _peers) {
       peer.client.dispose();
     }
-    setState(_peers.clear);
+    setState(() {
+      _peers.clear();
+      _status = null;
+    });
     unawaited(_saveConfig());
   }
 
@@ -104,10 +125,28 @@ class _DesktopHomeState extends State<DesktopHome> {
       ..clear()
       ..addAll(_peers.map((peer) => peer.address));
     _config.scenarioId = _scenarioId;
+    _config.custom = _custom;
     await _config.save();
   }
 
-  void _selectScenario(String id) {
+  Scenario _scenarioFor(String id) =>
+      id == 'custom' ? _custom.build() : Scenario.byId(id) ?? Scenario.presets.first;
+
+  /// The custom source is edited before it is selected: picking it from the
+  /// list and typing into the dialog are the same gesture, and cancelling
+  /// leaves whatever was serving untouched.
+  Future<void> _selectScenario(String id) async {
+    if (id == 'custom') {
+      final edited = await _editCustom();
+      if (edited == null || !mounted) return;
+      setState(() {
+        _custom = edited;
+        _scenarioId = 'custom';
+        _source.scenario = _custom.build();
+      });
+      unawaited(_saveConfig());
+      return;
+    }
     final scenario = Scenario.byId(id);
     if (scenario == null) return;
     setState(() {
@@ -115,6 +154,61 @@ class _DesktopHomeState extends State<DesktopHome> {
       _source.scenario = scenario;
     });
     unawaited(_saveConfig());
+  }
+
+  /// The editor, or null when it is dismissed.
+  Future<CustomSource?> _editCustom() => showDialog<CustomSource>(
+        context: context,
+        builder: (context) => CustomSourceDialog(initial: _custom),
+      );
+
+  /// Re-opens the editor for the source that is already selected.
+  Future<void> _editSelectedCustom() async {
+    final edited = await _editCustom();
+    if (edited == null || !mounted) return;
+    setState(() {
+      _custom = edited;
+      if (_scenarioId == 'custom') _source.scenario = _custom.build();
+    });
+    unawaited(_saveConfig());
+  }
+
+  /// Sweeps the subnet for phones answering this app's `/health` — the
+  /// console's "Scan network" button, over the code the phone app uses.
+  Future<void> _scan() async {
+    if (_scanning) return;
+    setState(() {
+      _scanning = true;
+      _status = 'Scanning the network on port ${DesktopTestSource.defaultPort}…';
+    });
+    try {
+      final found = await (widget.scan ?? () => LanDiscovery.scan())();
+      if (!mounted) return;
+      final known = _peers.map((peer) => peer.address).toSet();
+      final fresh = <String>[];
+      for (final peer in found) {
+        if (known.add(peer.label)) fresh.add(peer.label);
+      }
+      setState(() {
+        for (final address in fresh) {
+          _peers.add(_Peer(address));
+        }
+        // A silent sweep and a broken one look identical otherwise.
+        _status = found.isEmpty
+            ? 'No phone answered on port ${DesktopTestSource.defaultPort}.'
+            : 'Found ${found.length} on port ${DesktopTestSource.defaultPort}; '
+                'added ${fresh.length}.';
+      });
+      if (fresh.isNotEmpty) {
+        unawaited(_saveConfig());
+        await _pollAll();
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'Scan failed: $error');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
   }
 
   Future<void> _toggleSource() async {
@@ -134,13 +228,21 @@ class _DesktopHomeState extends State<DesktopHome> {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _TopBar(onAdd: _addPhone, onClear: _clear, onRefresh: _pollAll),
+          _TopBar(
+            onAdd: _addPhone,
+            onClear: _clear,
+            onRefresh: _pollAll,
+            onScan: _scan,
+            scanning: _scanning,
+          ),
           _SourceBar(
             scenarioId: _scenarioId,
+            customSummary: _custom.summary,
             running: _source.running,
             uri: _source.uri,
             failure: _source.failure,
             onScenario: _selectScenario,
+            onEditCustom: _editSelectedCustom,
             onToggle: _toggleSource,
           ),
           Expanded(
@@ -173,7 +275,8 @@ class _DesktopHomeState extends State<DesktopHome> {
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Text(
-              '${_peers.length} watched · $answering answering · '
+              _status ??
+                  '${_peers.length} watched · $answering answering · '
               'this PC answers on 127.0.0.1:41729 when the phone app is not using it',
               style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
             ),
@@ -197,11 +300,15 @@ class _TopBar extends StatelessWidget {
     required this.onAdd,
     required this.onClear,
     required this.onRefresh,
+    required this.onScan,
+    this.scanning = false,
   });
 
   final VoidCallback onAdd;
   final VoidCallback onClear;
   final VoidCallback onRefresh;
+  final VoidCallback onScan;
+  final bool scanning;
 
   @override
   Widget build(BuildContext context) {
@@ -227,6 +334,16 @@ class _TopBar extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
           const Spacer(),
+          TextButton.icon(
+            onPressed: scanning ? null : onScan,
+            icon: const Icon(Icons.wifi_find_rounded, size: 18),
+            label: Text(scanning ? 'Scanning…' : 'Scan'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textMuted,
+              disabledForegroundColor: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'Refresh now',
             onPressed: onRefresh,
@@ -259,18 +376,22 @@ class _TopBar extends StatelessWidget {
 class _SourceBar extends StatelessWidget {
   const _SourceBar({
     required this.scenarioId,
+    required this.customSummary,
     required this.running,
     required this.uri,
     required this.failure,
     required this.onScenario,
+    required this.onEditCustom,
     required this.onToggle,
   });
 
   final String scenarioId;
+  final String customSummary;
   final bool running;
   final Uri? uri;
   final String? failure;
   final ValueChanged<String> onScenario;
+  final VoidCallback onEditCustom;
   final VoidCallback onToggle;
 
   @override
@@ -296,11 +417,24 @@ class _SourceBar extends StatelessWidget {
             items: [
               for (final scenario in Scenario.presets)
                 DropdownMenuItem(value: scenario.id, child: Text(scenario.name)),
+              // The editor's own source, named by what it actually serves, so
+              // the bar cannot promise a carrier that was switched off.
+              DropdownMenuItem(
+                value: 'custom',
+                child: Text('Custom · $customSummary'),
+              ),
             ],
             onChanged: (value) {
               if (value != null) onScenario(value);
             },
           ),
+          if (scenarioId == 'custom')
+            IconButton(
+              tooltip: 'Edit the custom source',
+              onPressed: onEditCustom,
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              color: AppColors.textMuted,
+            ),
           const SizedBox(width: 12),
           FilledButton(
             onPressed: onToggle,
@@ -355,8 +489,8 @@ class _EmptyState extends StatelessWidget {
             ),
             SizedBox(height: 6),
             Text(
-              'Tap Watch phone and type the address a phone shows while it is '
-              'sharing over Wi-Fi.',
+              'Tap Scan to find phones sharing on this Wi-Fi, or Watch phone '
+              'to type the address one shows.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textMuted),
             ),

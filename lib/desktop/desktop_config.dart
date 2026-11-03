@@ -1,15 +1,25 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'scenario.dart';
+
 /// What the desktop remembers between runs: the phones being watched and the
 /// scenario the test source serves, in the same `%APPDATA%\Sector Scout` folder
 /// the Python console used.
 class DesktopConfig {
-  DesktopConfig({List<String>? phones, this.scenarioId = 'tmo-n41'})
-      : phones = [...?phones];
+  DesktopConfig({
+    List<String>? phones,
+    this.scenarioId = 'tmo-n41',
+    CustomSource? custom,
+  })  : phones = [...?phones],
+        custom = custom ?? const CustomSource();
 
   final List<String> phones;
   String scenarioId;
+
+  /// What the editor last built, kept even while a preset is selected so
+  /// switching back does not lose the bands that were typed in.
+  CustomSource custom;
 
   static File defaultFile() {
     final appData = Platform.environment['APPDATA'] ??
@@ -36,6 +46,7 @@ class DesktopConfig {
       return DesktopConfig(
         phones: phones,
         scenarioId: scenario is String && scenario.isNotEmpty ? scenario : 'tmo-n41',
+        custom: CustomSource.fromJson(decoded['custom']),
       );
     } on Object {
       // A corrupt file must not stop the app from opening.
@@ -51,6 +62,7 @@ class DesktopConfig {
         const JsonEncoder.withIndent('  ').convert({
           'phones': phones,
           'scenario': scenarioId,
+          'custom': custom.toJson(),
         }),
       );
     } on Object {

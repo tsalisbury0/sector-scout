@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cell_tower_monitor/desktop/desktop_config.dart';
 import 'package:cell_tower_monitor/desktop/scenario.dart';
 import 'package:cell_tower_monitor/desktop/test_source.dart';
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
@@ -69,22 +70,87 @@ void main() {
       expect(snapshot.sims[1].lteServing!.plmn, '311-480');
       expect(snapshot.sims[1].slotIndex, 1);
     });
+  });
 
-    test('a custom scenario keeps the band and level it is given', () {
-      final scenario = Scenario.custom(
+  group('the custom source', () {
+    test('keeps the band and the level it is given', () {
+      final scenario = const CustomSource(
         carrierName: 'TestNet',
         mcc: '001',
         mnc: '01',
-        band: 41,
-        arfcn: 40490,
-        dbm: -77,
-      );
+        override: 'NONE',
+        lteBand: 41,
+        lteArfcn: 40490,
+        lteDbm: -77,
+        nrBand: null,
+      ).build();
       final cell = _read(scenario).sims.single.lteServing!;
 
       expect(cell.bands, contains(41));
       expect(cell.arfcn, 40490);
       expect(cell.plmn, '001-01');
       expect(cell.dbm, inInclusiveRange(-79, -75));
+    });
+
+    test('an NSA leg is sent without an NCI so the app estimates the gNB', () {
+      final sim =
+          _read(const CustomSource(lteBand: 30, nrBand: 5).build()).sims.single;
+
+      expect(sim.overrideNetworkType, 'NR_NSA');
+      expect(sim.lteServing!.bands, contains(30));
+      expect(sim.nrServing, isNotNull);
+      expect(sim.nrServing!.cellId, isNull);
+      expect(sim.nsaGnbEstimate, isNotNull);
+    });
+
+    test('an SA source sends the NR carrier alone, with its NCI', () {
+      final sim = _read(
+        const CustomSource(
+          override: 'NR_SA',
+          lteBand: 30,
+          nrBand: 41,
+          nrArfcn: 519000,
+        ).build(),
+      ).sims.single;
+
+      expect(sim.lteServing, isNull);
+      expect(sim.nrServing!.arfcn, 519000);
+      expect(sim.nrServing!.cellId, isNotNull);
+    });
+
+    test('switching the NR leg off drops the override with it', () {
+      const source = CustomSource(override: 'NR_NSA', lteBand: 12, nrBand: null);
+
+      expect(source.wireOverride, 'NONE');
+      expect(source.summary, 'B12 anchor');
+      expect(_read(source.build()).sims.single.nrServing, isNull);
+    });
+  });
+
+  group('the desktop config', () {
+    test('remembers the watched phones and the custom source', () async {
+      final directory = await Directory.systemTemp.createTemp('sector-scout-config');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}desktop.json');
+
+      final saved = DesktopConfig(
+        phones: ['10.1.1.47:41729'],
+        scenarioId: 'custom',
+        custom: const CustomSource(
+          mcc: '001',
+          mnc: '01',
+          lteBand: 41,
+          lteDbm: -77,
+        ),
+      );
+      await saved.save(file);
+
+      final loaded = DesktopConfig.load(file);
+      expect(loaded.phones, ['10.1.1.47:41729']);
+      expect(loaded.scenarioId, 'custom');
+      expect(loaded.custom.mcc, '001');
+      expect(loaded.custom.lteBand, 41);
+      expect(loaded.custom.lteDbm, -77);
     });
   });
 
