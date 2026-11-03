@@ -116,21 +116,26 @@ class _DesktopHomeState extends State<DesktopHome> {
   }
 
   Future<void> _pollPeers() async {
-    for (final peer in _peers) {
-      try {
-        final snapshot = await peer.fetch();
-        if (!mounted) return;
-        setState(() {
-          peer.snapshot = snapshot;
-          peer.error = null;
-          peer.lastOk = DateTime.now();
-        });
-      } catch (error) {
-        if (!mounted) return;
-        setState(() => peer.error = '$error');
-      }
-    }
+    // Together, not one after another: a Bluetooth pass takes seconds, and a
+    // phone answering on Wi-Fi should not wait behind it. The Bluetooth reads
+    // still queue inside BleDesktop, so they go one at a time regardless.
+    await Future.wait(_peers.map(_pollPeer));
     if (mounted) setState(() => _refreshedAt = DateTime.now());
+  }
+
+  Future<void> _pollPeer(_Peer peer) async {
+    try {
+      final snapshot = await peer.fetch();
+      if (!mounted) return;
+      setState(() {
+        peer.snapshot = snapshot;
+        peer.error = null;
+        peer.lastOk = DateTime.now();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => peer.error = '$error');
+    }
   }
 
   /// The address box is the console's "ip or ip:port" entry: a bare address is

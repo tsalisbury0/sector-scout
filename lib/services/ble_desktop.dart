@@ -114,9 +114,13 @@ class BleDesktop {
   static const int readLimit = 400;
 
   /// How many times one payload may restart under a read before it is called a
-  /// failure. A phone that replaces its reading mid-pass starts the sequence
-  /// again, and that is worth retrying rather than reporting.
-  static const int payloadRestarts = 3;
+  /// failure, and how long one poll may spend on it. A phone that replaces its
+  /// reading every couple of seconds sends a long pass back to the first
+  /// chunk, so a rewind is retried rather than reported: a pass that needs
+  /// dozens of chunks only gets through when one of those attempts happens to
+  /// land inside a single update window.
+  static const int payloadRestarts = 16;
+  static const Duration payloadBudget = Duration(seconds: 10);
 
   /// A read that mixes two payloads is retried, because the next one starts
   /// from a fresh link and a fresh cursor.
@@ -271,10 +275,12 @@ class BleDesktop {
   }
 
   static Future<BleChunkReader> _payload(String address) async {
+    final deadline = DateTime.now().add(payloadBudget);
     await _rewind(address);
     var reader = BleChunkReader();
     var restarts = 0;
     for (var read = 0; read < readLimit; read++) {
+      if (DateTime.now().isAfter(deadline)) break;
       final raw = await WinBle.read(
         address: address,
         serviceId: serviceUuid,
@@ -287,8 +293,10 @@ class BleDesktop {
         if (reader.add(raw)) return reader;
       } on RemoteException {
         // The reading under this pass changed. Start the payload again rather
-        // than hand back bytes from two of them.
-        if (restarts >= payloadRestarts) {
+        // than hand back bytes from two of them: the rewind is cheap, and a
+        // long pass only gets through on a retry that fits one update.
+        restarts++;
+        if (restarts > payloadRestarts || DateTime.now().isAfter(deadline)) {
           // The frame size is what says which end to look at: 20-byte frames
           // mean the bridge never agreed a larger MTU, so a reading is far more
           // chunks than the phone's update window allows.
@@ -298,7 +306,6 @@ class BleDesktop {
             '${reader.chunkCount} of ${reader.totalChunks} chunks)',
           );
         }
-        restarts++;
         reader = BleChunkReader();
         await _rewind(address);
       }
