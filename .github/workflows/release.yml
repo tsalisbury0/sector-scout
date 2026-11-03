@@ -31,7 +31,21 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
+      - name: Fetch the APK signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 is not set" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > sector-scout.jks
+          echo "KEYSTORE_PATH=$PWD/sector-scout.jks" >> "$GITHUB_ENV"
       - name: Build the release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           flutter build apk --release

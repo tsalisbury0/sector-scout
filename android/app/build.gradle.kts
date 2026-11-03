@@ -39,9 +39,23 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // CI decodes the KEYSTORE_BASE64 secret and points KEYSTORE_PATH at
+            // it, so every release APK is signed with the one permanent key and
+            // can install over the previous version. A machine without the
+            // keystore (a local `flutter run --release`) keeps debug signing.
+            val ksPath = System.getenv("KEYSTORE_PATH")
+            val releaseKeystore = ksPath != null && java.io.File(ksPath).exists()
+            if (releaseKeystore) {
+                signingConfigs.getByName("release").apply {
+                    storeFile = java.io.File(ksPath!!)
+                    storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("KEY_ALIAS")
+                    keyPassword = System.getenv("KEY_PASSWORD")
+                }
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }
