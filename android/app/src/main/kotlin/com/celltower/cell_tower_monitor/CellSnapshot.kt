@@ -221,14 +221,14 @@ object CellSnapshot {
         // cell from getAllCellInfo() — Samsung on NZ networks, among
         // others — still answer here, which is what lets the badge claim
         // 5G with no cell to point at.
-        val nrState = nrStateOf(tm)
         val nrSignal = nrRsrp(tm)
-        m["nrState"] = nrStateName(nrState)
+        val nrState = nrStateText(tm, nrSignal)
+        m["nrState"] = nrState
         // True when the NR leg is up by any evidence the platform gives:
         // the state says CONNECTED, or SignalStrength carries an NR part.
         // The second is public API, so it answers on firmware that
         // refuses the hidden state call.
-        m["nrConnected"] = nrState == NR_STATE_CONNECTED || nrSignal != null
+        m["nrConnected"] = nrState == "CONNECTED" || nrSignal != null
         if (nrSignal != null) m["nrRsrp"] = nrSignal
         m["plmn"] = ownPlmn
 
@@ -338,6 +338,56 @@ object CellSnapshot {
         return if (rsrp == null || rsrp == Int.MAX_VALUE) null else rsrp
     }
 
+    /**
+     * The NR state as text, from the hidden method where it answers and from
+     * `ServiceState.toString()` where it does not.
+     *
+     * NetMonster (netmonster-core, `NrNsaStateParser`) established this route:
+     * AOSP hides the state behind methods apps cannot call, but the fields are
+     * printed by `ServiceState.toString()`, so they can be read out of it. The
+     * printed `nrState` is masked to `****` from Android 12 on some firmware,
+     * which is what `isNrAvailable` / `isEnDcAvailable` and an NR signal part
+     * are there to cover.
+     */
+    private fun nrStateText(tm: TelephonyManager?, nrSignal: Int?): String {
+        val numeric = nrStateOf(tm)
+        if (numeric != null) return nrStateName(numeric)
+        return nrStateFromServiceState(tm, nrSignal)
+    }
+
+    /** Field-by-field read of the `ServiceState` string, NetMonster style. */
+    private fun nrStateFromServiceState(tm: TelephonyManager?, nrSignal: Int?): String {
+        val text = safe { tm?.serviceState?.toString() } ?: return ""
+        fun field(name: String): String? =
+            Regex(Regex.escape(name) + "\s*=\s*([^,\s}]+)")
+                .find(text)
+                ?.groupValues
+                ?.get(1)
+        fun flag(name: String): Boolean = field(name)?.equals("true", true) == true
+
+        val raw = field("nrState")?.uppercase().orEmpty()
+        // Huawei on Android P, LG on Android P: the same answer under other names.
+        val huaweiConnected = field("nsaState")?.toIntOrNull() == 5
+        val lgConnected = flag("EnDc") && flag("5G Allocated")
+        val available = flag("isNrAvailable") || flag("isEnDcAvailable") ||
+            field("nsaState")?.toIntOrNull() in 2..4
+        val restricted = flag("isDcNrRestricted")
+
+        return when {
+            huaweiConnected || lgConnected -> "CONNECTED"
+            raw.contains("CONNECTED") -> "CONNECTED"
+            raw.contains("NOT_RESTRICTED") -> "NOT_RESTRICTED"
+            raw.contains("RESTRICTED") || restricted -> "RESTRICTED"
+            raw.contains("NONE") -> "NONE"
+            // Android 12+ masks nrState: an NR signal part is then the only
+            // proof the leg is actually carrying anything.
+            available && nrSignal != null -> "CONNECTED"
+            available -> "AVAILABLE"
+            raw.contains("***") -> "MASKED"
+            else -> ""
+        }
+    }
+
     private fun nrStateName(value: Int?): String = when (value) {
         0 -> "NONE"
         1 -> "RESTRICTED"
@@ -345,9 +395,6 @@ object CellSnapshot {
         3 -> "CONNECTED"
         else -> ""
     }
-
-    /** `ServiceState`/`TelephonyManager` NR state: the leg is connected. */
-    private val NR_STATE_CONNECTED = 3
 
     /** True when the platform is advertising any active 5G link. */
     private fun isNrOverride(value: Int): Boolean {
