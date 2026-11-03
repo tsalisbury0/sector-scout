@@ -49,9 +49,17 @@ const List<_OverrideChoice> _overrides = [
 /// The read-back at the top is built from what is actually served, not from the
 /// rows, so it cannot promise a carrier the override drops.
 class CustomSourceScreen extends StatefulWidget {
-  const CustomSourceScreen({super.key, required this.initial});
+  const CustomSourceScreen({
+    super.key,
+    required this.initial,
+    this.onChanged,
+  });
 
   final CustomSource initial;
+
+  /// Called with the draft on every edit, so what is served follows the
+  /// boxes instead of waiting for the page to be dismissed.
+  final ValueChanged<CustomSource>? onChanged;
 
   @override
   State<CustomSourceScreen> createState() => _CustomSourceScreenState();
@@ -159,6 +167,14 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
       if (entry.$2 == plmn) return entry.$1;
     }
     return plmn.isEmpty ? 'Custom' : plmn;
+  }
+
+  /// Every edit is applied as it happens: this page is the source's editor,
+  /// not a form that has to be submitted.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    widget.onChanged?.call(_build());
   }
 
   void _serve() => Navigator.of(context).pop(_build());

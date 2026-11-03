@@ -202,9 +202,23 @@ class _DesktopHomeState extends State<DesktopHome> {
   Future<CustomSource?> _editCustom() =>
       Navigator.of(context).push<CustomSource>(
         MaterialPageRoute(
-          builder: (context) => CustomSourceScreen(initial: _custom),
+          builder: (context) => CustomSourceScreen(
+            initial: _custom,
+            onChanged: _draftCustom,
+          ),
         ),
       );
+
+  /// Every edit the page makes is held here at once, so the phone watching
+  /// the test source sees the change on its next poll instead of waiting for
+  /// the page to be dismissed.
+  void _draftCustom(CustomSource draft) {
+    if (!mounted) return;
+    setState(() {
+      _custom = draft;
+      if (_scenarioId == 'custom') _source.scenario = draft.build();
+    });
+  }
 
   /// Re-opens the editor for the source that is already selected.
   Future<void> _editSelectedCustom() async {
@@ -1369,6 +1383,25 @@ class _NeighbourCard extends StatelessWidget {
                       fontSize: 11.5,
                       color: AppColors.textPrimary,
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  // A neighbour arrives as a PCI, a band and a level, so the
+                  // level is what says whether it is worth handing over to.
+                  Text(
+                    cells[index].dbm == null
+                        ? '—'
+                        : '${cells[index].dbm} dBm',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.forBars(cells[index].bars),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SignalBars(
+                    bars: cells[index].bars,
+                    height: 14,
+                    barWidth: 3,
+                    gap: 2,
                   ),
                   const SizedBox(width: 10),
                   Expanded(

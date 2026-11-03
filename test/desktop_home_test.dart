@@ -128,4 +128,26 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+  testWidgets('an edit reaches the source before the page is served',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: DesktopHome(config: DesktopConfig(scenarioId: 'custom')),
+    ));
+
+    await tester.tap(find.text('Test source').first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Edit the custom source'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('custom-anchor-band')), 'B41');
+    await tester.pump();
+
+    // Back out without "Serve this": the edit was already applied live.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Custom · B41 anchor + n5'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
