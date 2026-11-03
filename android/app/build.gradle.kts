@@ -44,15 +44,13 @@ android {
             // can install over the previous version. A machine without the
             // keystore (a local `flutter run --release`) keeps debug signing.
             val ksPath = System.getenv("KEYSTORE_PATH")
-            val releaseKeystore = ksPath != null && java.io.File(ksPath).exists()
-            if (releaseKeystore) {
-                signingConfigs.getByName("release").apply {
-                    storeFile = java.io.File(ksPath!!)
+            if (ksPath != null && File(ksPath).exists()) {
+                signingConfig = signingConfigs.create("release").apply {
+                    storeFile = File(ksPath)
                     storePassword = System.getenv("KEYSTORE_PASSWORD")
                     keyAlias = System.getenv("KEY_ALIAS")
                     keyPassword = System.getenv("KEY_PASSWORD")
                 }
-                signingConfig = signingConfigs.getByName("release")
             } else {
                 signingConfig = signingConfigs.getByName("debug")
             }
