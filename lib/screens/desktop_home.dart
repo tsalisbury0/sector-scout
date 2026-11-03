@@ -47,6 +47,14 @@ class _DesktopHomeState extends State<DesktopHome> {
   Timer? _timer;
   bool _scanning = false;
 
+  /// Kept apart from [_scanning] so a Bluetooth scan leaves the Wi-Fi
+  /// button alone, and neither can block the other.
+  bool _bluetoothScanning = false;
+
+  /// True while a sweep is running, so the poll timer cannot start a second
+  /// one on top of the first.
+  bool _polling = false;
+
   /// 0 is Phones, 1 is Test source.
   int _tab = 0;
 
@@ -75,8 +83,6 @@ class _DesktopHomeState extends State<DesktopHome> {
     for (final address in _config.phones) {
       _peers.add(_Peer(address));
     }
-    unawaited(_source.start());
-
     _timer = Timer.periodic(const Duration(seconds: 2), (_) => _pollAll());
     if (_peers.isNotEmpty) unawaited(_pollAll());
   }
@@ -97,7 +103,19 @@ class _DesktopHomeState extends State<DesktopHome> {
     BandFilters.cbrs = _corrections;
   }
 
+  /// One sweep at a time: a Bluetooth read takes seconds, and two of them
+  /// reset each other's cursor on the phone mid-payload.
   Future<void> _pollAll() async {
+    if (_polling) return;
+    _polling = true;
+    try {
+      await _pollPeers();
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _pollPeers() async {
     for (final peer in _peers) {
       try {
         final snapshot = await peer.fetch();
@@ -284,9 +302,9 @@ class _DesktopHomeState extends State<DesktopHome> {
   /// The console's "Scan Bluetooth": phones advertising the GATT share, with
   /// no network between the two machines at all.
   Future<void> _scanBluetooth() async {
-    if (_scanning) return;
+    if (_bluetoothScanning) return;
     setState(() {
-      _scanning = true;
+      _bluetoothScanning = true;
       _status = 'Scanning Bluetooth\u2026';
     });
     try {
@@ -323,8 +341,15 @@ class _DesktopHomeState extends State<DesktopHome> {
       if (!mounted) return;
       setState(() => _status = 'Bluetooth scan failed: $error');
     } finally {
-      if (mounted) setState(() => _scanning = false);
+      if (mounted) setState(() => _bluetoothScanning = false);
     }
+  }
+
+  /// Starts the source and repaints once it has, so the bar shows the address
+  /// it bound.
+  Future<void> _startSource() async {
+    await _source.start();
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleSource() async {
@@ -353,7 +378,16 @@ class _DesktopHomeState extends State<DesktopHome> {
       body: Column(
         children: [
           _Header(status: _sourceLabel),
-          _Tabs(index: _tab, onChanged: (value) => setState(() => _tab = value)),
+          _Tabs(
+            index: _tab,
+            onChanged: (value) {
+              setState(() => _tab = value);
+              // Nothing is served until the source is actually opened: a
+              // window that held port 41729 from launch was serving a test
+              // reading nobody had asked for.
+              if (value == 1 && !_source.running) unawaited(_startSource());
+            },
+          ),
           Expanded(
             child: IndexedStack(
               index: _tab,
@@ -385,6 +419,7 @@ class _DesktopHomeState extends State<DesktopHome> {
           controller: _address,
           error: _addError,
           scanning: _scanning,
+          bluetoothScanning: _bluetoothScanning,
           onAdd: _addFromField,
           onScan: _scan,
           onScanBluetooth: _scanBluetooth,
@@ -599,6 +634,7 @@ class _AddBar extends StatelessWidget {
     required this.onScan,
     required this.onScanBluetooth,
     required this.scanning,
+    required this.bluetoothScanning,
     this.error,
   });
 
@@ -607,6 +643,10 @@ class _AddBar extends StatelessWidget {
   final VoidCallback onScan;
   final VoidCallback onScanBluetooth;
   final bool scanning;
+
+  /// Its own state, so the Wi-Fi button does not say "Scanning…" while
+  /// Bluetooth is the thing being scanned.
+  final bool bluetoothScanning;
   final String? error;
 
   @override
@@ -663,14 +703,16 @@ class _AddBar extends StatelessWidget {
                     ? 'Find phones advertising the Bluetooth share'
                     : 'Bluetooth watching is available in the Windows app',
                 child: OutlinedButton.icon(
-                  onPressed: Platform.isWindows && !scanning
+                  onPressed: Platform.isWindows && !bluetoothScanning
                       ? onScanBluetooth
                       : null,
                   icon: const Icon(
                     Icons.bluetooth_searching_rounded,
                     size: 16,
                   ),
-                  label: const Text('Scan Bluetooth'),
+                  label: Text(
+                    bluetoothScanning ? 'Scanning…' : 'Scan Bluetooth',
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textMuted,
                     side: const BorderSide(color: AppColors.border),
