@@ -445,6 +445,28 @@ void main() {
       // A name this build does not know is kept, and matched to its preset.
       expect(loaded.scenarioId, 'T-Mobile n41 SA');
     });
+
+    test('a Bluetooth phone the console wrote becomes a ble: entry', () async {
+      final directory = await Directory.systemTemp.createTemp('sector-scout-ble');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}desktop.json');
+
+      await file.writeAsString(jsonEncode({
+        'phones': [
+          {
+            'url': '',
+            'name': 'samsung SM-S931U',
+            'transport': 'ble',
+            'address': 'C4:7B:2F:1A:9E:03',
+          },
+          '10.1.1.47:41729',
+        ],
+      }));
+
+      final loaded = DesktopConfig.load(file);
+      // The transport lives in the prefix, so one list holds both kinds.
+      expect(loaded.phones, ['ble:C4:7B:2F:1A:9E:03', '10.1.1.47:41729']);
+    });
   });
 
   group('test source', () {

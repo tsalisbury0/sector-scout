@@ -16,6 +16,10 @@ void main() {
     expect(find.text('Test source'), findsWidgets);
     expect(find.widgetWithText(FilledButton, 'Add phone'), findsOneWidget);
     expect(find.text('Scan'), findsOneWidget);
+    expect(
+      find.widgetWithText(OutlinedButton, 'Scan Bluetooth'),
+      findsOneWidget,
+    );
     expect(find.text('No phones yet'), findsOneWidget);
     expect(find.textContaining('0/0 phones answering'), findsOneWidget);
     expect(find.text('Display corrections'), findsOneWidget);
