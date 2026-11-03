@@ -500,7 +500,7 @@ class _Section extends StatelessWidget {
                   ),
                 ),
               ),
-              if (action != null) action!,
+              ?action,
             ],
           ),
           if (subtitle != null)
