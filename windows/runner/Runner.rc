@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.celltower" "\0"
-            VALUE "FileDescription", "cell_tower_monitor" "\0"
+            VALUE "CompanyName", "Sector Scout" "\0"
+            VALUE "FileDescription", "Sector Scout Desktop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "cell_tower_monitor" "\0"
+            VALUE "InternalName", "SectorScout" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.celltower. All rights reserved." "\0"
-            VALUE "OriginalFilename", "cell_tower_monitor.exe" "\0"
-            VALUE "ProductName", "cell_tower_monitor" "\0"
+            VALUE "OriginalFilename", "SectorScout.exe" "\0"
+            VALUE "ProductName", "Sector Scout" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

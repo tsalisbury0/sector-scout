@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +8,7 @@ import '../desktop/scenario.dart';
 import '../desktop/test_source.dart';
 import '../models/band_filters.dart';
 import '../models/cell_snapshot.dart';
+import '../services/ble_desktop.dart';
 import '../services/lan_discovery.dart';
 import '../services/remote_client.dart';
 import '../services/serving_view.dart';
@@ -85,7 +87,7 @@ class _DesktopHomeState extends State<DesktopHome> {
     _address.dispose();
     unawaited(_source.stop());
     for (final peer in _peers) {
-      peer.client.dispose();
+      peer.dispose();
     }
     super.dispose();
   }
@@ -98,7 +100,7 @@ class _DesktopHomeState extends State<DesktopHome> {
   Future<void> _pollAll() async {
     for (final peer in _peers) {
       try {
-        final snapshot = await peer.client.fetch();
+        final snapshot = await peer.fetch();
         if (!mounted) return;
         setState(() {
           peer.snapshot = snapshot;
@@ -136,7 +138,7 @@ class _DesktopHomeState extends State<DesktopHome> {
   }
 
   void _removePeer(_Peer peer) {
-    peer.client.dispose();
+    peer.dispose();
     setState(() {
       _peers.remove(peer);
       _status = null;
@@ -148,7 +150,7 @@ class _DesktopHomeState extends State<DesktopHome> {
   Future<void> _saveConfig() async {
     _config.phones
       ..clear()
-      ..addAll(_peers.map((peer) => peer.address));
+      ..addAll(_peers.map((peer) => peer.saved));
     _config.scenarioId = _scenarioId;
     _config.corrections = _corrections;
     _config.custom = _custom;
@@ -265,6 +267,52 @@ class _DesktopHomeState extends State<DesktopHome> {
     }
   }
 
+  /// The console's "Scan Bluetooth": phones advertising the GATT share, with
+  /// no network between the two machines at all.
+  Future<void> _scanBluetooth() async {
+    if (_scanning) return;
+    setState(() {
+      _scanning = true;
+      _status = 'Scanning Bluetooth\u2026';
+    });
+    try {
+      final found = await BleDesktop.scan();
+      if (!mounted) return;
+      if (found.isEmpty) {
+        setState(
+          () => _status = 'No phone advertised the Bluetooth share. Turn '
+              'Bluetooth sharing on in the app and scan again.',
+        );
+        return;
+      }
+      final chosen = await showDialog<BleDesktopPeer>(
+        context: context,
+        builder: (context) => _BlePicker(peers: found),
+      );
+      if (!mounted) return;
+      if (chosen == null) {
+        setState(() => _status = 'Found ${found.length} over Bluetooth.');
+        return;
+      }
+      final saved = 'ble:${chosen.address}';
+      if (_peers.any((peer) => peer.saved == saved)) {
+        setState(() => _status = '${chosen.label} is already being watched.');
+        return;
+      }
+      setState(() {
+        _peers.add(_Peer(saved));
+        _status = 'Watching ${chosen.label} over Bluetooth.';
+      });
+      unawaited(_saveConfig());
+      await _pollAll();
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'Bluetooth scan failed: $error');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
   Future<void> _toggleSource() async {
     if (_source.running) {
       await _source.stop();
@@ -325,6 +373,7 @@ class _DesktopHomeState extends State<DesktopHome> {
           scanning: _scanning,
           onAdd: _addFromField,
           onScan: _scan,
+          onScanBluetooth: _scanBluetooth,
         ),
         Expanded(
           child: _peers.isEmpty
@@ -534,6 +583,7 @@ class _AddBar extends StatelessWidget {
     required this.controller,
     required this.onAdd,
     required this.onScan,
+    required this.onScanBluetooth,
     required this.scanning,
     this.error,
   });
@@ -541,6 +591,7 @@ class _AddBar extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onAdd;
   final VoidCallback onScan;
+  final VoidCallback onScanBluetooth;
   final bool scanning;
   final String? error;
 
@@ -589,6 +640,29 @@ class _AddBar extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                 ),
                 child: const Text('Add phone'),
+              ),
+              const SizedBox(width: 8),
+              // Shown in both builds so a non-Windows platform sees the
+              // reason rather than a missing button.
+              Tooltip(
+                message: Platform.isWindows
+                    ? 'Find phones advertising the Bluetooth share'
+                    : 'Bluetooth watching is available in the Windows app',
+                child: OutlinedButton.icon(
+                  onPressed: Platform.isWindows && !scanning
+                      ? onScanBluetooth
+                      : null,
+                  icon: const Icon(
+                    Icons.bluetooth_searching_rounded,
+                    size: 16,
+                  ),
+                  label: const Text('Scan Bluetooth'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textMuted,
+                    side: const BorderSide(color: AppColors.border),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               OutlinedButton.icon(
@@ -1325,16 +1399,38 @@ class _NeighbourCard extends StatelessWidget {
   }
 }
 
+/// A phone being watched, over Wi-Fi or Bluetooth.
 class _Peer {
-  _Peer(String address)
-      : address = address,
-        client = RemoteClient(_peerUri(address));
+  _Peer(String saved)
+      : saved = saved,
+        address = saved.startsWith(blePrefix)
+            ? saved.substring(blePrefix.length)
+            : saved;
 
+  /// A Bluetooth share is saved as `ble:<address>`, so one list holds both
+  /// transports and the config stays a list of strings.
+  static const String blePrefix = 'ble:';
+
+  final String saved;
   final String address;
-  final RemoteClient client;
   CellSnapshot? snapshot;
   String? error;
   DateTime? lastOk;
+
+  RemoteClient? _client;
+
+  bool get isBluetooth => saved.startsWith(blePrefix);
+
+  /// One reading, over whichever transport this phone is watched by.
+  Future<CellSnapshot> fetch() {
+    if (isBluetooth) return BleDesktop.read(address);
+    return (_client ??= RemoteClient(_peerUri(address))).fetch();
+  }
+
+  void dispose() {
+    _client?.dispose();
+    _client = null;
+  }
 
   static Uri _peerUri(String input) {
     var text = input.trim();

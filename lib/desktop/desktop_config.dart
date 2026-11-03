@@ -50,6 +50,15 @@ class DesktopConfig {
           if (entry is String && entry.trim().isNotEmpty) {
             phones.add(entry.trim());
           } else if (entry is Map<Object?, Object?>) {
+            // The console wrote a Bluetooth phone's transport beside its
+            // address, so read that shape too.
+            if (entry['transport'] == 'ble') {
+              final address = entry['address'];
+              if (address is String && address.trim().isNotEmpty) {
+                phones.add('ble:${address.trim()}');
+              }
+              continue;
+            }
             final url = entry['url'];
             if (url is String && url.trim().isNotEmpty) phones.add(url.trim());
           }
