@@ -699,7 +699,7 @@ class _CarrierRowState extends State<_CarrierRow> {
       tech: widget.nr ? CellTech.nr : CellTech.lte,
       registered: true,
       arfcn: channel,
-      bands: [if (band != null) band],
+      bands: [?band],
     );
     final mhz = tower.downlinkMhz;
     return mhz == null ? null : '${mhz.toStringAsFixed(2)} MHz';
