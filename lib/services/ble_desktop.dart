@@ -4,6 +4,9 @@ import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:win_ble/win_ble.dart';
+// WinServer, which hands out the path of the bundled BleServer.exe, is not
+// exported by the barrel.
+import 'package:win_ble/win_file.dart';
 
 import '../models/cell_snapshot.dart';
 import 'ble_link.dart';

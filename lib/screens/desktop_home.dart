@@ -1399,6 +1399,54 @@ class _NeighbourCard extends StatelessWidget {
   }
 }
 
+/// Lists what the Bluetooth scan found, strongest first.
+class _BlePicker extends StatelessWidget {
+  const _BlePicker({required this.peers});
+
+  final List<BleDesktopPeer> peers;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text('Phones over Bluetooth'),
+      content: SizedBox(
+        width: 380,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final peer in peers)
+              ListTile(
+                dense: true,
+                title: Text(
+                  peer.label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                subtitle: Text(
+                  '${peer.address}  \u00b7  ${peer.rssi} dBm',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                onTap: () => Navigator.of(context).pop(peer),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
 /// A phone being watched, over Wi-Fi or Bluetooth.
 class _Peer {
   _Peer(String saved)
