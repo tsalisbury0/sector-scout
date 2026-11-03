@@ -359,7 +359,7 @@ object CellSnapshot {
     private fun nrStateFromServiceState(tm: TelephonyManager?, nrSignal: Int?): String {
         val text = safe { tm?.serviceState?.toString() } ?: return ""
         fun field(name: String): String? =
-            Regex(Regex.escape(name) + "\s*=\s*([^,\s}]+)")
+            Regex(Regex.escape(name) + """\s*=\s*([^,\s}]+)""")
                 .find(text)
                 ?.groupValues
                 ?.get(1)
@@ -369,8 +369,9 @@ object CellSnapshot {
         // Huawei on Android P, LG on Android P: the same answer under other names.
         val huaweiConnected = field("nsaState")?.toIntOrNull() == 5
         val lgConnected = flag("EnDc") && flag("5G Allocated")
+        val nsaState = field("nsaState")?.toIntOrNull()
         val available = flag("isNrAvailable") || flag("isEnDcAvailable") ||
-            field("nsaState")?.toIntOrNull() in 2..4
+            (nsaState != null && nsaState in 2..4)
         val restricted = flag("isDcNrRestricted")
 
         return when {
