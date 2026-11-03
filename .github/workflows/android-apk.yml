@@ -1,0 +1,42 @@
+name: Android APK
+
+# Builds the phone app on demand and attaches the APK to the run. The release
+# workflow is the one that publishes; this exists so a build that fixes
+# something on the phone can be installed and tested without cutting a release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Fetch packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build the APK
+        run: |
+          sha="$(git rev-parse --short HEAD)"
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "sector-scout-${sha}.apk"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-apk
+          path: sector-scout-*.apk
+          if-no-files-found: error
