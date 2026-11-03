@@ -14,8 +14,10 @@ import '../services/serving_view.dart';
 import '../services/signal_notification.dart';
 import 'settings_screen.dart';
 import '../theme/app_colors.dart';
+import '../widgets/note_help.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/tech_badge.dart';
+import '../widgets/update_notice.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -572,11 +574,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               'Sector Scout',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
-            Text(
-              _isRemote
-                  ? 'Remote · ${_remoteLabel ?? 'phone'}'
-                  : _subtitle(snapshot),
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _isRemote
+                        ? 'Remote · ${_remoteLabel ?? 'phone'}'
+                        : _subtitle(snapshot),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ),
+                if (snapshot != null)
+                  NoteHelp(
+                    _readingNote(snapshot),
+                    label: 'Where this reading comes from',
+                  ),
+              ],
             ),
           ],
         ),
@@ -779,6 +796,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // above already carries the reason, so it is not repeated here.
     final problem = _isRemote ? null : _error;
     return [
+      const UpdateNotice(),
       if (problem != null) ...[
         _ErrorCard(message: problem),
         const SizedBox(height: 12),
@@ -801,30 +819,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         sharedNeighbours: sharedNeighbours,
       ),
       if (!showNeighbours) ...[
-        const SizedBox(height: 12),
-        _FootNote(
-          'The radio scans neighbours once for both slots — the list is on the '
-          '$firstSimLabel page.',
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: NoteHelp(
+            'The radio scans neighbours once for both slots — the list is on '
+            'the $firstSimLabel page.',
+            label: 'Neighbour scan',
+          ),
         ),
       ],
       if (_notificationOn && !_backgroundExempt) ...[
         const SizedBox(height: 8),
         _BackgroundCard(onAllow: _requestBackgroundExemption),
       ],
-      const SizedBox(height: 24),
-      _FootNote(
-        _isRemote
-            ? 'Read over ${_remoteTransport ? 'Bluetooth' : 'the LAN'} from '
-                  '${_remoteLabel ?? 'the other phone'}, refreshed every 2 s '
-                  'through the same JSON the app serves. ${snapshot.activeSims.length} '
-                  'active SIM${snapshot.activeSims.length == 1 ? '' : 's'}.'
-            : 'Read from TelephonyManager · '
-                  '${snapshot.activeSims.length} active '
-                  'SIM${snapshot.activeSims.length == 1 ? '' : 's'}. NSA bars show '
-                  'the LTE anchor and the 5G secondary separately; SA uses the '
-                  'single NR meter. Neighbour visibility depends on the modem and '
-                  'Android version.',
-      ),
     ];
   }
 
@@ -888,6 +896,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           sim.isNsa && lte != null && nr != null
               ? '${prefix}4G anchor'
               : '$prefix${sim.isSa ? '5G NR' : 'Serving cell'}',
+          note: _servingNote(sim, nr),
         ),
         const SizedBox(height: 8),
         _DetailCard(
@@ -899,37 +908,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             sim.isNsa && lte != null && nr != null ? lte : sim.serving!,
           ),
         ),
-        if (sim.isNsa && nr == null) ...[
-          const SizedBox(height: 8),
-          _FootNote(
-            'The platform reports the NR leg connected (NR state: '
-            '${sim.nrState.isEmpty ? 'not reported' : sim.nrState}) while '
-            'the radio is not exposing an NR cell right now — Samsung only '
-            'hands the NR leg to apps while it is carrying data. The 5G '
-            'badge is the platform’s word, not a cell: the meter above is '
-            'the LTE anchor.',
-          ),
-        ],
         if (sim.isNsa && lte != null && nr != null) ...[
           const SizedBox(height: 16),
-          _SectionLabel('${prefix}5G NR secondary'),
+          _SectionLabel(
+            '${prefix}5G NR secondary',
+            note: nr.gnb == null
+                ? (sim.nsaGnbEstimate != null
+                      ? 'This radio hides the NR cell identity while NSA is '
+                            'up, so the gNB marked “est.” is derived from the '
+                            'LTE anchor. There is no sector to report without '
+                            'the NCI; PCI, band and ARFCN are reported '
+                            'directly.'
+                      : 'This radio hides the NR cell identity while NSA is '
+                            'up, so gNB and sector are unavailable — PCI, band '
+                            'and ARFCN still identify the carrier.')
+                : null,
+          ),
           const SizedBox(height: 8),
           _DetailCard(
             entries: _servingEntries(nr, gnbEstimate: sim.nsaGnbEstimate),
           ),
-          if (nr.gnb == null) ...[
-            const SizedBox(height: 8),
-            _FootNote(
-              sim.nsaGnbEstimate != null
-                  ? 'This radio hides the NR cell identity while NSA is up, '
-                        'so the gNB marked “est.” is derived from the LTE anchor. '
-                        'There is no sector to report without the NCI; PCI, band '
-                        'and ARFCN are reported directly.'
-                  : 'This radio hides the NR cell identity while NSA is up, so '
-                        'gNB and sector are unavailable — PCI, band and ARFCN '
-                        'still identify the carrier.',
-            ),
-          ],
         ],
         // LTE B29 is a supplemental downlink: it only shows up once it is
         // aggregated under the primary, and it arrives with no ECI at all, so
@@ -937,7 +935,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // and the same gap.
         if (sim.lteSecondaries.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _SectionLabel('${prefix}4G LTE secondary'),
+          _SectionLabel(
+            '${prefix}4G LTE secondary',
+            note:
+                'Secondaries are aggregated under the primary LTE cell. Band '
+                '29 is a downlink-only supplemental carrier: the radio reports '
+                'it with a PCI, band and channel but no cell identity, so '
+                'there is no eNB, sector or TAC to show — and no uplink '
+                'frequency, because the band has none. Its MCC/MNC only come '
+                'through while it is carrying data, which is why the PLMN '
+                'falls back to the network the primary cell is registered on.',
+          ),
           const SizedBox(height: 8),
           for (final secondary in sim.lteSecondaries) ...[
             _DetailCard(
@@ -948,15 +956,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 8),
           ],
-          const _FootNote(
-            'Secondaries are aggregated under the primary LTE cell. Band 29 is '
-            'a downlink-only supplemental carrier: the radio reports it with a '
-            'PCI, band and channel but no cell identity, so there is no eNB, '
-            'sector or TAC to show — and no uplink frequency, because the band '
-            'has none. Its MCC/MNC only come through while it is carrying '
-            'data, which is why the PLMN falls back to the network the primary '
-            'cell is registered on.',
-          ),
         ],
         const SizedBox(height: 20),
         _SectionLabel('${prefix}Radio quality'),
@@ -981,22 +980,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             '${prefix}Neighbour cells'
             '${sim.neighbours.isEmpty ? '' : ' (${sim.neighbours.length})'}'
             '${sharedNeighbours ? ' · shared radio' : ''}',
+            note: sim.neighbours.any((cell) => cell.cellId == null)
+                ? 'Android 12+ hides neighbour cell IDs from apps, so those '
+                      'rows are identified by PCI and band instead.'
+                : null,
           ),
           const SizedBox(height: 8),
           _NeighbourCard(neighbours: sim.neighbours),
-          if (sim.neighbours.any((cell) => cell.cellId == null)) ...[
-            const SizedBox(height: 8),
-            const _FootNote(
-              'Android 12+ hides neighbour cell IDs from apps, so those rows '
-              'are identified by PCI and band instead.',
-            ),
-          ],
         ],
       ],
     ];
   }
 
   String _carrierName(SimReading sim) => ServingView.carrierName(sim);
+
+  /// Why an NSA pair can read 5G with only an LTE cell behind it.
+  String? _servingNote(SimReading sim, CellTower? nr) {
+    if (!sim.isNsa || nr != null) return null;
+    final state = sim.nrState.isEmpty ? 'not reported' : sim.nrState;
+    return 'The platform reports the NR leg connected (NR state: $state) '
+        'while the radio is not exposing an NR cell right now — many radios '
+        'only hand the NR leg to apps while it is carrying data. The 5G badge '
+        'follows the platform’s report, not a cell: the meter above is the '
+        'LTE anchor.';
+  }
+
+  /// Where the reading on this page came from.
+  String _readingNote(CellSnapshot snapshot) => _isRemote
+      ? 'Read over ${_remoteTransport ? 'Bluetooth' : 'the LAN'} from '
+            '${_remoteLabel ?? 'the other phone'}, refreshed every 2 s through '
+            'the same JSON the app serves. '
+            '${snapshot.activeSims.length} active '
+            'SIM${snapshot.activeSims.length == 1 ? '' : 's'}.'
+      : 'Read from TelephonyManager · '
+            '${snapshot.activeSims.length} active '
+            'SIM${snapshot.activeSims.length == 1 ? '' : 's'}. NSA bars show '
+            'the LTE anchor and the 5G secondary separately; SA uses the '
+            'single NR meter. Neighbour visibility depends on the modem and '
+            'Android version.';
 
   List<MapEntry<String, String>> _servingEntries(
     CellTower cell, {
@@ -1869,13 +1890,16 @@ class _LoadingCard extends StatelessWidget {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+  const _SectionLabel(this.text, {this.note});
 
   final String text;
 
+  /// The explanation behind this section's circled question mark.
+  final String? note;
+
   @override
   Widget build(BuildContext context) {
-    return Text(
+    final label = Text(
       text.toUpperCase(),
       style: const TextStyle(
         fontSize: 10,
@@ -1884,23 +1908,15 @@ class _SectionLabel extends StatelessWidget {
         color: AppColors.textMuted,
       ),
     );
-  }
-}
-
-class _FootNote extends StatelessWidget {
-  const _FootNote(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 10.5,
-        height: 1.5,
-        color: Color(0xFF64748B),
-      ),
+    final note = this.note;
+    if (note == null) return label;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: label),
+        const SizedBox(width: 4),
+        NoteHelp(note, label: text),
+      ],
     );
   }
 }

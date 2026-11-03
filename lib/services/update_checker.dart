@@ -14,11 +14,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// reinstall of itself, and to know this build is a beta — the stable of the
 /// same version numbers is then still offered as an update, since moving off
 /// the prerelease matters even when the numbers match.
-const String kBuildTag = 'v1.0.4-beta';
+const String kBuildTag = 'v1.0.5-beta';
 
 /// The version string of this build, used where Android's versionName is not
 /// reachable (the desktop has no platform to ask).
-const String kVersionText = '1.0.4';
+const String kVersionText = '1.0.5';
 
 /// Where releases are listed. The repo is public, so this reads without a
 /// token: the unauthenticated 60-queries-an-hour cap suits a once-per-launch
@@ -54,10 +54,12 @@ class UpdateDownloading extends UpdatePhase {
 
 /// The APK sits in the app's storage, ready for the package installer.
 class UpdateReady extends UpdatePhase {
-  const UpdateReady(this.info, this.apkPath);
+  const UpdateReady(this.info, this.filePath);
 
   final UpdateInfo info;
-  final String apkPath;
+
+  /// The downloaded file: the APK on Android, the app zip on the desktop.
+  final String filePath;
 }
 
 /// The check or the download failed; the banner explains and retries.
@@ -192,35 +194,64 @@ class UpdateChecker {
     }
   }
 
-  /// Runs the update: on Android the APK is downloaded and handed to the
-  /// package installer; the desktop jumps to the release page, where the new
-  /// folder zip waits (a portable exe can only be replaced while stopped).
+  /// Runs the update for this platform: Android takes the APK, the desktop
+  /// takes the app zip. A running exe cannot replace itself, so the desktop
+  /// download lands in Downloads and is opened from there.
   static Future<void> install(UpdateInfo info) async {
-    final apkUrl = info.apkUrl;
-    if (apkUrl == null) {
-      // Desktop, or a release without an APK: the release page is the way in.
-      unawaited(launchUrl(
-        Uri.parse(info.pageUrl),
-        mode: LaunchMode.externalApplication,
-      ));
+    final android = !kIsWeb && Platform.isAndroid;
+    final url = android ? info.apkUrl : info.windowsUrl;
+    if (url == null) {
+      // Nothing this platform can use: the release page is the way in.
+      unawaited(
+        launchUrl(
+          Uri.parse(info.pageUrl),
+          mode: LaunchMode.externalApplication,
+        ),
+      );
       update.value = null;
       return;
     }
     try {
-      final dir = await getApplicationSupportDirectory();
-      final apk =
-          File('${dir.path}${Platform.pathSeparator}sector-scout-${info.tag}.apk');
+      final dir = android
+          ? await getApplicationSupportDirectory()
+          : (await getDownloadsDirectory()) ??
+                await getApplicationSupportDirectory();
+      final name = android
+          ? 'sector-scout-${info.tag}.apk'
+          : 'sector-scout-${info.tag}.zip';
+      final file = File('${dir.path}${Platform.pathSeparator}$name');
       update.value = UpdateDownloading(info, 0);
-      await _download(apkUrl, apk, info);
-      update.value = UpdateReady(info, apk.path);
+      await _download(url, file, info);
+      update.value = UpdateReady(info, file.path);
     } catch (error) {
       update.value = UpdateFailed('Download failed: $error');
     }
   }
 
+  /// Acts on a downloaded update: Android hands the APK to the package
+  /// installer, the desktop selects the zip in Explorer.
+  static Future<bool> openReady(String path) async {
+    if (!kIsWeb && Platform.isAndroid) return installApk(path);
+    if (!kIsWeb && Platform.isWindows) {
+      try {
+        // explorer takes the switch and the path as one argument.
+        await Process.run('explorer.exe', ['/select,$path']);
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+    unawaited(
+      launchUrl(Uri.file(path), mode: LaunchMode.externalApplication),
+    );
+    return true;
+  }
+
   /// Hands a downloaded APK to the package installer. `false` means the user
   /// was sent to grant "install unknown apps" first and should tap again.
   static Future<bool> installApk(String path) async {
+    // Only the Android side has a package installer to hand this to.
+    if (kIsWeb || !Platform.isAndroid) return false;
     return await _channel.invokeMethod<bool>('installApk', {'path': path}) ??
         false;
   }

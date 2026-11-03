@@ -160,7 +160,14 @@ class DashboardHtml {
   }
   .nb .bars { height: 22px; }
   .nb .bars i { width: 4px; }
-  .note { font-size: 10.5px; line-height: 1.5; color: #64748b; margin-top: 8px; }
+  .note { margin-top: 8px; font-size: 10.5px; color: #64748b; }
+  .note summary {
+    cursor: pointer; list-style: none; width: 18px; height: 18px;
+    line-height: 16px; text-align: center; border-radius: 9px;
+    border: 1px solid #475569; font-size: 12px; color: #94a3b8;
+  }
+  .note summary::-webkit-details-marker { display: none; }
+  .note .notetext { font-size: 10.5px; line-height: 1.5; margin-top: 6px; }
   .notice {
     display: flex; gap: 10px; align-items: flex-start;
     margin: 12px 0; padding: 14px;
@@ -371,10 +378,10 @@ class DashboardHtml {
           _foot(
             'The platform reports the NR leg connected (NR state: '
             '${sim.nrState.isEmpty ? 'not reported' : sim.nrState}) while '
-            'the radio is not exposing an NR cell right now — Samsung only '
-            'hands the NR leg to apps while it is carrying data. The 5G '
-            'badge is the platform’s word, not a cell: the meter above is '
-            'the LTE anchor.',
+            'the radio is not exposing an NR cell right now — many radios '
+            'only hand the NR leg to apps while it is carrying data. The 5G '
+            'badge follows the platform’s report, not a cell: the meter above '
+            'is the LTE anchor.',
           ),
         );
       }
@@ -550,7 +557,10 @@ class DashboardHtml {
       '<div class="notice"><span class="ico">\u26a0</span>'
       '<span class="msg">${_esc(message)}</span></div>';
 
-  static String _foot(String text) => '<div class="note">${_esc(text)}</div>';
+  /// A note that stays folded behind its circled question mark.
+  static String _foot(String text) =>
+      '<details class="note"><summary>?</summary>'
+      '<div class="notetext">${_esc(text)}</div></details>';
 
   // -- formatting --------------------------------------------------------
 

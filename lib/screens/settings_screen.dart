@@ -7,6 +7,7 @@ import '../services/app_settings.dart';
 import '../services/signal_notification.dart';
 import '../services/update_checker.dart';
 import '../theme/app_colors.dart';
+import '../widgets/note_help.dart';
 
 /// The switches that change how the app reads a cell, and the ones that keep a
 /// reading on screen: the band corrections and the pinned notification.
@@ -130,7 +131,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          const _SectionLabel('Band display'),
+          _SectionLabel(
+            'Band display',
+            note:
+                'Corrections only change the label. The ARFCN, the frequencies '
+                'and the identity stay as the radio reported them, and a '
+                'corrected band names what it replaced.',
+          ),
           _SettingsCard(
             children: [
               _SettingsSwitch(
@@ -167,13 +174,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          const _FootNote(
-            'Corrections only change the label. The ARFCN, the frequencies and '
-            'the identity stay as the radio reported them, and a corrected band '
-            'names what it replaced.',
-          ),
           const SizedBox(height: 20),
-          const _SectionLabel('Notification'),
+          _SectionLabel(
+            'Notification',
+            note: 'The pinned notification is Android only.',
+          ),
           _SettingsCard(
             children: [
               _SettingsSwitch(
@@ -187,9 +192,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           if (!_notification.isSupported)
-            const _FootNote('The pinned notification is Android only.'),
           const SizedBox(height: 20),
-          const _SectionLabel('Updates'),
+          _SectionLabel(
+            'Updates',
+            note:
+                'The check reads the releases list on GitHub once per launch, '
+                'or when you tap Check now. An APK downloads inside the app and '
+                'Android asks before installing; the Windows app downloads the '
+                'zip into Downloads and shows it in Explorer, so the new '
+                'folder can replace the old one.',
+          ),
           _SettingsCard(
             children: [
               ListenableBuilder(
@@ -233,12 +245,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          const _FootNote(
-            'The check reads the releases list on GitHub once per launch, or '
-            'when you tap Check now. An APK downloads inside the app and '
-            'Android asks before installing; the Windows app opens the '
-            'release page, whose zip replaces the app folder.',
-          ),
         ],
       ),
     );
@@ -246,23 +252,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
+  const _SectionLabel(this.text, {this.note});
 
   final String text;
 
+  /// The explanation behind this section's circled question mark.
+  final String? note;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.1,
-          color: AppColors.textMuted,
-        ),
+    final label = Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 10,
+        letterSpacing: 1.1,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textMuted,
       ),
+    );
+    final note = this.note;
+    if (note == null) return label;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: label),
+        const SizedBox(width: 4),
+        NoteHelp(note, label: text),
+      ],
     );
   }
 }
@@ -417,23 +433,3 @@ class _SettingsAction extends StatelessWidget {
   }
 }
 
-class _FootNote extends StatelessWidget {
-  const _FootNote(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 11,
-          height: 1.4,
-          color: Color(0xFF64748B),
-        ),
-      ),
-    );
-  }
-}

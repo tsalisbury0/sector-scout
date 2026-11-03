@@ -1659,13 +1659,15 @@ class _UpdateBanner extends StatelessWidget {
             action = windows ? 'Open release page' : 'Download update';
           case final UpdateDownloading download:
             title = 'Downloading ${download.info.versionText}';
-            subtitle = '${download.percent}% · the install screen comes up '
-                'when the APK is in';
+            subtitle = '${download.percent}% · installing comes next';
             progress = download.percent / 100;
           case final UpdateReady ready:
             title = '${ready.info.versionText} is downloaded';
-            subtitle = 'Tap install and Android takes it from there.';
-            action = 'Install update';
+            subtitle = windows
+                ? 'Saved in Downloads — the button opens it in Explorer, then '
+                    'unzip the new folder over this one.'
+                : 'Tap install and Android takes it from there.';
+            action = windows ? 'Show download' : 'Install update';
           case final UpdateFailed failed:
             title = 'Update check failed';
             subtitle = failed.message;
@@ -1724,8 +1726,8 @@ class _UpdateBanner extends StatelessWidget {
                   onPressed: () {
                     if (phase is UpdateAvailable) {
                       unawaited(UpdateChecker.install(phase.info));
-                    } else if (phase is UpdateReady && !windows) {
-                      unawaited(UpdateChecker.installApk(phase.apkPath));
+                    } else if (phase is UpdateReady) {
+                      unawaited(UpdateChecker.openReady(phase.filePath));
                     } else if (phase is UpdateFailed) {
                       unawaited(UpdateChecker.refresh());
                     }
