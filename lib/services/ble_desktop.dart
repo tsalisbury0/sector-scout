@@ -3,10 +3,7 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 
-import 'package:win_ble/win_ble.dart';
-// WinServer, which hands out the path of the bundled BleServer.exe, is not
-// exported by the barrel.
-import 'package:win_ble/win_file.dart';
+import 'package:universal_ble/universal_ble.dart';
 
 import '../models/cell_snapshot.dart';
 import 'ble_link.dart';
@@ -42,8 +39,7 @@ class BleChunkReader {
   int _total = 0;
 
   /// Frames taken so far, how many the phone says the payload has, and how big
-  /// the last frame was — a 20-byte frame means the link never agreed a larger
-  /// MTU, which is worth knowing when a read fails.
+  /// the last frame was — the first thing to check when a read keeps failing.
   int get chunkCount => _pieces.length;
   int get totalChunks => _total;
   int lastFrameBytes = 0;
@@ -79,19 +75,20 @@ class BleChunkReader {
 /// The phone's Bluetooth share, read from Windows.
 ///
 /// Windows gets no Bluetooth from the phone's own bridge, so the desktop talks
-/// to the GATT server the app advertises through `win_ble`, a WinRT bridge.
+/// to the GATT server the app advertises through `universal_ble`, whose Windows
+/// backend reads with `BluetoothCacheMode::Uncached`. The packager `win_ble`
+/// reads through copied this out first: its server called the cache-backed
+/// `ReadValueAsync()`, so every read answered the same first chunk no matter
+/// what the phone had, and a chunked payload could never be reassembled.
+///
 /// The UUIDs and the chunked read are `BleShare.kt`'s, so the two ends cannot
 /// drift apart: every read answers `[index, total, ...bytes]`, and writing to
 /// the reset characteristic rewinds this client to the first chunk.
 ///
 /// Two reads never run at once. The phone holds a single cursor per client and
 /// every read rewinds it, so a second read started on top of the first takes
-/// that one's chunks and disconnects its link: the poll timer is free to tick
-/// as often as it likes, and the reads still arrive one at a time.
-///
-/// The bridge cannot ask for a larger MTU, so a payload arrives in 20-byte
-/// chunks — a couple of hundred reads. The phone pins one reading per client
-/// read, which is what makes a pass that long finish at all.
+/// that one's chunks: the poll timer is free to tick as often as it likes, and
+/// the reads still arrive one at a time.
 class BleDesktop {
   BleDesktop._();
 
@@ -109,16 +106,14 @@ class BleDesktop {
   static const Duration connectTimeout = Duration(seconds: 20);
   static const Duration chunkTimeout = Duration(seconds: 5);
 
-  /// A reading at a 20-byte MTU is a few hundred chunks; the cap only has to
-  /// stop a phone that never sends a last one.
+  /// A payload never spans more than 255 chunks, and a read that stopped
+  /// halfway must not loop forever.
   static const int readLimit = 400;
 
   /// How many times one payload may restart under a read before it is called a
   /// failure, and how long one poll may spend on it. A phone that replaces its
-  /// reading every couple of seconds sends a long pass back to the first
-  /// chunk, so a rewind is retried rather than reported: a pass that needs
-  /// dozens of chunks only gets through when one of those attempts happens to
-  /// land inside a single update window.
+  /// reading every couple of seconds sends a pass back to the first chunk, and a
+  /// pass only gets through when an attempt lands inside one update window.
   static const int payloadRestarts = 16;
   static const Duration payloadBudget = Duration(seconds: 10);
 
@@ -131,19 +126,11 @@ class BleDesktop {
   /// as if it had not.
   static const Duration linkIdle = Duration(seconds: 45);
 
-  static bool _ready = false;
-
   /// The queue that keeps one read at a time.
   static Future<void> _queue = Future<void>.value();
 
   static final Set<String> _open = <String>{};
   static final Map<String, DateTime> _usedAt = <String, DateTime>{};
-
-  static Future<void> _ensureReady() async {
-    if (_ready) return;
-    await WinBle.initialize(serverPath: await WinServer.path());
-    _ready = true;
-  }
 
   /// Phones advertising the share, strongest first.
   static Future<List<BleDesktopPeer>> scan() async {
@@ -152,29 +139,23 @@ class BleDesktop {
         'Bluetooth watching is only available in the Windows build.',
       );
     }
-    try {
-      await _ensureReady();
-    } on Object catch (error) {
-      throw RemoteException('Bluetooth is not available here: $error');
-    }
 
     final found = <String, BleDesktopPeer>{};
-    final subscription = WinBle.scanStream.listen((device) {
-      final uuids = device.serviceUuids
-          .map((uuid) => uuid.toString().toLowerCase())
-          .where((uuid) => uuid.contains(serviceUuid));
-      if (uuids.isEmpty) return;
-      found[device.address] = BleDesktopPeer(
-        address: device.address,
-        name: device.name.trim(),
-        rssi: int.tryParse(device.rssi) ?? -999,
+    final subscription = UniversalBle.scanStream.listen((device) {
+      if (!device.services.contains(serviceUuid)) return;
+      found[device.deviceId] = BleDesktopPeer(
+        address: device.deviceId,
+        name: (device.name ?? '').trim(),
+        rssi: device.rssi ?? -999,
       );
     });
     try {
-      WinBle.startScanning();
+      await UniversalBle.startScan(
+        scanFilter: ScanFilter(withServices: const [serviceUuid]),
+      );
       await Future<void>.delayed(scanWindow);
     } finally {
-      WinBle.stopScanning();
+      await UniversalBle.stopScan();
       await subscription.cancel();
     }
     return found.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
@@ -196,11 +177,21 @@ class BleDesktop {
   }
 
   static Future<CellSnapshot> _read(String address) async {
-    await _ensureReady();
     Object? lastError;
     for (var attempt = 0; attempt < readAttempts; attempt++) {
       try {
         await _openLink(address);
+
+        // Rewind this link's cursor: the phone advances it per client, so a
+        // read that stopped halfway would otherwise resume mid-payload.
+        await UniversalBle.write(
+          address,
+          serviceUuid,
+          resetUuid,
+          Uint8List.fromList(const [0]),
+          timeout: chunkTimeout,
+        );
+
         final reader = await _payload(address);
         final bytes = reader.bytes;
         if (bytes == null) {
@@ -242,50 +233,32 @@ class BleDesktop {
     if (_open.contains(address) && !stale) return;
     if (_open.contains(address)) await _closeLink(address);
 
-    await WinBle.connect(address).timeout(connectTimeout);
+    await UniversalBle.connect(address, timeout: connectTimeout);
     _open.add(address);
-    final services = await WinBle.discoverServices(address, forceRefresh: true)
-        .timeout(connectTimeout);
-    final sharing = services
-        .map((service) => service.toLowerCase())
-        .any((service) => service.contains(serviceUuid));
+
+    final services = await UniversalBle.discoverServices(
+      address,
+      timeout: connectTimeout,
+    );
+    final sharing = services.any((service) => service.uuid == serviceUuid);
     // A phone that restarted its share still advertises for a while after its
-    // GATT server has closed, and a Windows discovery can come back empty on
-    // the first try. Say which of the two it looks like.
+    // GATT server has closed. Say which of the two it looks like.
     if (!sharing) throw const _NoShare();
     _usedAt[address] = DateTime.now();
   }
 
-  /// Rewinds this link's cursor: the phone advances it per client, so a read
-  /// that stopped halfway would otherwise resume mid-payload.
-  static Future<void> _rewind(String address) async {
-    try {
-      await WinBle.write(
-        address: address,
-        service: serviceUuid,
-        characteristic: resetUuid,
-        data: Uint8List.fromList(const [0]),
-        writeWithResponse: true,
-      ).timeout(chunkTimeout);
-    } on Object {
-      // A phone that refuses the reset still serves from wherever its cursor
-      // is; the index in every chunk puts the pieces back in order, and a
-      // chunk that comes round again restarts the payload below.
-    }
-  }
-
   static Future<BleChunkReader> _payload(String address) async {
     final deadline = DateTime.now().add(payloadBudget);
-    await _rewind(address);
     var reader = BleChunkReader();
     var restarts = 0;
     for (var read = 0; read < readLimit; read++) {
       if (DateTime.now().isAfter(deadline)) break;
-      final raw = await WinBle.read(
-        address: address,
-        serviceId: serviceUuid,
-        characteristicId: dataUuid,
-      ).timeout(chunkTimeout);
+      final raw = await UniversalBle.read(
+        address,
+        serviceUuid,
+        dataUuid,
+        timeout: chunkTimeout,
+      );
       if (raw.isEmpty) break;
       // Two bytes is an empty share: index 0 of 0.
       if (raw.length < 3) break;
@@ -293,13 +266,9 @@ class BleDesktop {
         if (reader.add(raw)) return reader;
       } on RemoteException {
         // The reading under this pass changed. Start the payload again rather
-        // than hand back bytes from two of them: the rewind is cheap, and a
-        // long pass only gets through on a retry that fits one update.
+        // than hand back bytes from two of them.
         restarts++;
         if (restarts > payloadRestarts || DateTime.now().isAfter(deadline)) {
-          // The frame size is what says which end to look at: 20-byte frames
-          // mean the bridge never agreed a larger MTU, so a reading is far more
-          // chunks than the phone's update window allows.
           throw RemoteException(
             'the phone replaced its reading mid-read every time '
             '(${reader.lastFrameBytes}-byte frames, '
@@ -307,7 +276,13 @@ class BleDesktop {
           );
         }
         reader = BleChunkReader();
-        await _rewind(address);
+        await UniversalBle.write(
+          address,
+          serviceUuid,
+          resetUuid,
+          Uint8List.fromList(const [0]),
+          timeout: chunkTimeout,
+        );
       }
     }
     return reader;
@@ -317,7 +292,7 @@ class BleDesktop {
     _open.remove(address);
     _usedAt.remove(address);
     try {
-      await WinBle.disconnect(address);
+      await UniversalBle.disconnect(address, timeout: const Duration(seconds: 5));
     } on Object {
       // Dropping a link that is already gone is not a failure.
     }

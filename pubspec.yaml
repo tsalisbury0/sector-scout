@@ -35,9 +35,11 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   permission_handler: 12.0.2
-  # Windows has no Bluetooth of its own for Dart: this is the WinRT bridge
-  # the desktop reads a phone's GATT share through.
-  win_ble: ^1.1.1
+  # Windows has no Bluetooth of its own for Dart. universal_ble's Windows
+  # backend reads with BluetoothCacheMode::Uncached, which the chunked share
+  # needs: the packager win_ble called Windows' cache-backed ReadValueAsync(),
+  # so every read answered the same first chunk regardless of the phone.
+  universal_ble: ^3.2.0
 
 dev_dependencies:
   flutter_test:
