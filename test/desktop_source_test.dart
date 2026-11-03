@@ -92,15 +92,27 @@ void main() {
       expect(cell.dbm, inInclusiveRange(-79, -75));
     });
 
-    test('an NSA leg is sent without an NCI so the app estimates the gNB', () {
-      final sim =
-          _read(const CustomSource(lteBand: 30, nrBand: 5).build()).sims.single;
+    test('an NSA leg is sent without an NCI, so only the estimate names it', () {
+      // The estimate is the app's own AT&T/Dish offset, so it needs the PLMN
+      // that mapping belongs to; on any other carrier there is nothing to show.
+      final sim = _read(
+        const CustomSource(mcc: '310', mnc: '410', lteBand: 30, nrBand: 5)
+            .build(),
+      ).sims.single;
 
       expect(sim.overrideNetworkType, 'NR_NSA');
       expect(sim.lteServing!.bands, contains(30));
       expect(sim.nrServing, isNotNull);
       expect(sim.nrServing!.cellId, isNull);
       expect(sim.nsaGnbEstimate, isNotNull);
+    });
+
+    test('a custom NSA leg on another carrier carries no gNB at all', () {
+      final sim =
+          _read(const CustomSource(lteBand: 30, nrBand: 5).build()).sims.single;
+
+      expect(sim.nrServing!.cellId, isNull);
+      expect(sim.nsaGnbEstimate, isNull);
     });
 
     test('an SA source sends the NR carrier alone, with its NCI', () {

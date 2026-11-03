@@ -409,24 +409,35 @@ class _SourceBar extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
           const SizedBox(width: 12),
-          DropdownButton<String>(
-            value: scenarioId,
-            dropdownColor: AppColors.surface,
-            underline: const SizedBox.shrink(),
-            style: const TextStyle(fontSize: 12.5, color: AppColors.textPrimary),
-            items: [
-              for (final scenario in Scenario.presets)
-                DropdownMenuItem(value: scenario.id, child: Text(scenario.name)),
-              // The editor's own source, named by what it actually serves, so
-              // the bar cannot promise a carrier that was switched off.
-              DropdownMenuItem(
-                value: 'custom',
-                child: Text('Custom · $customSummary'),
-              ),
-            ],
-            onChanged: (value) {
-              if (value != null) onScenario(value);
-            },
+          // Flexible and ellipsised: the custom entry is long, and the bar has
+          // to keep fitting in a narrow window instead of overflowing.
+          Flexible(
+            child: DropdownButton<String>(
+              value: scenarioId,
+              isExpanded: true,
+              dropdownColor: AppColors.surface,
+              underline: const SizedBox.shrink(),
+              style: const TextStyle(fontSize: 12.5, color: AppColors.textPrimary),
+              items: [
+                for (final scenario in Scenario.presets)
+                  DropdownMenuItem(
+                    value: scenario.id,
+                    child: Text(scenario.name, overflow: TextOverflow.ellipsis),
+                  ),
+                // The editor's own source, named by what it actually serves, so
+                // the bar cannot promise a carrier that was switched off.
+                DropdownMenuItem(
+                  value: 'custom',
+                  child: Text(
+                    'Custom · $customSummary',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) onScenario(value);
+              },
+            ),
           ),
           if (scenarioId == 'custom')
             IconButton(
