@@ -71,6 +71,8 @@ class BleShare(private val context: Context) {
     }
 
     private val cursors = ConcurrentHashMap<String, Int>()
+    /** The payload each client is part-way through, pinned at its first chunk. */
+    private val readings = ConcurrentHashMap<String, ByteArray>()
     private val mtus = ConcurrentHashMap<String, Int>()
 
     @Volatile private var payload: ByteArray = ByteArray(0)
@@ -84,10 +86,17 @@ class BleShare(private val context: Context) {
 
     val isRunning: Boolean get() = server != null && advertising
 
-    /** Replaces the payload. Chunk cursors restart, so no reader keeps old bytes. */
+    /**
+     * Replaces the payload.
+     *
+     * Cursors are deliberately left alone: a client that is half-way through
+     * a reading finishes the one it started on, and its next read from the
+     * first chunk picks this one up. Clearing them here restarted every
+     * client mid-payload, which spliced two readings into JSON no reader
+     * could parse at a small MTU, where a reading takes many chunks.
+     */
     fun update(json: String) {
         payload = json.toByteArray(Charsets.UTF_8)
-        cursors.clear()
     }
 
     @SuppressLint("MissingPermission")
@@ -229,6 +238,7 @@ class BleShare(private val context: Context) {
         }
         server = null
         cursors.clear()
+        readings.clear()
         mtus.clear()
     }
 
@@ -255,6 +265,7 @@ class BleShare(private val context: Context) {
         ) {
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 cursors.remove(device.address)
+                readings.remove(device.address)
             }
         }
 
@@ -285,7 +296,17 @@ class BleShare(private val context: Context) {
                 return
             }
 
-            val data = payload
+            // A client that starts a payload pins the bytes it will be served:
+            // the first chunk of a reading is where the snapshot is taken, so a
+            // new reading arriving half-way through cannot change the ones
+            // already sent.
+            val cursor = cursors[device.address] ?: 0
+            val data = if (cursor == 0) {
+                payload.also { readings[device.address] = it }
+            } else {
+                readings[device.address]
+                    ?: payload.also { readings[device.address] = it }
+            }
             val chunk = ((mtus[device.address] ?: 23) - 3).coerceIn(16, CHUNK_CAP)
             val total = (data.size + chunk - 1) / chunk
             if (data.isEmpty() || total == 0) {
@@ -300,7 +321,7 @@ class BleShare(private val context: Context) {
                 return
             }
 
-            val start = (cursors[device.address] ?: 0).let { if (it >= total) 0 else it }
+            val start = cursor.let { if (it >= total) 0 else it }
             cursors[device.address] = (start + 1) % total
 
             val from = start * chunk
@@ -323,6 +344,7 @@ class BleShare(private val context: Context) {
         ) {
             if (characteristic.uuid == RESET) {
                 cursors[device.address] = 0
+                readings.remove(device.address)
                 if (responseNeeded) {
                     respond(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
                 }

@@ -33,22 +33,26 @@ class BleDesktopPeer {
 /// Reassembles the chunks the phone answers with.
 ///
 /// Each frame is `[index, total, ...bytes]` and the phone keeps one cursor per
-/// client, so the frames of one payload arrive in order. The phone also clears
-/// every cursor whenever the reading it shares is replaced, which means a chunk
-/// that has already been taken cannot belong to the same payload: keeping it
-/// would splice two readings together into JSON nothing can parse.
+/// client, so the frames of one payload arrive in order. A chunk that arrives
+/// twice cannot belong to the same payload — a phone that clears its cursors on
+/// every new reading starts the sequence again — and keeping it would splice two
+/// readings into JSON nothing can parse.
 class BleChunkReader {
   final Map<int, List<int>> _pieces = <int, List<int>>{};
   int _total = 0;
 
-  /// Frames taken so far, and how many the phone says the payload has.
+  /// Frames taken so far, how many the phone says the payload has, and how big
+  /// the last frame was — a 20-byte frame means the link never agreed a larger
+  /// MTU, which is worth knowing when a read fails.
   int get chunkCount => _pieces.length;
   int get totalChunks => _total;
+  int lastFrameBytes = 0;
 
   bool get complete => _total > 0 && _pieces.length >= _total;
 
   /// Takes one frame, answering true when the whole payload is in hand.
   bool add(List<int> frame) {
+    lastFrameBytes = frame.length;
     if (frame.length < 3) return false;
     // Masked because a bridge may hand the frame back as signed bytes, which
     // would turn a chunk count into a negative number.
@@ -84,6 +88,10 @@ class BleChunkReader {
 /// every read rewinds it, so a second read started on top of the first takes
 /// that one's chunks and disconnects its link: the poll timer is free to tick
 /// as often as it likes, and the reads still arrive one at a time.
+///
+/// The bridge cannot ask for a larger MTU, so a payload arrives in 20-byte
+/// chunks — a couple of hundred reads. The phone pins one reading per client
+/// read, which is what makes a pass that long finish at all.
 class BleDesktop {
   BleDesktop._();
 
@@ -101,13 +109,18 @@ class BleDesktop {
   static const Duration connectTimeout = Duration(seconds: 20);
   static const Duration chunkTimeout = Duration(seconds: 5);
 
-  /// A payload never spans more than 255 chunks, and a read that stopped
-  /// halfway must not loop forever.
-  static const int readLimit = 96;
+  /// A reading at a 20-byte MTU is a few hundred chunks; the cap only has to
+  /// stop a phone that never sends a last one.
+  static const int readLimit = 400;
+
+  /// How many times one payload may restart under a read before it is called a
+  /// failure. A phone that replaces its reading mid-pass starts the sequence
+  /// again, and that is worth retrying rather than reporting.
+  static const int payloadRestarts = 3;
 
   /// A read that mixes two payloads is retried, because the next one starts
   /// from a fresh link and a fresh cursor.
-  static const int readAttempts = 3;
+  static const int readAttempts = 2;
 
   /// A link left alone this long is dropped rather than trusted: Android closes
   /// the GATT server when the phone sleeps, and Windows keeps the handle open
@@ -189,7 +202,8 @@ class BleDesktop {
         if (bytes == null) {
           throw RemoteException(
             'the phone stopped part-way through the reading '
-            '(${reader.chunkCount} of ${reader.totalChunks} chunks)',
+            '(${reader.chunkCount} of ${reader.totalChunks} chunks, '
+            '${reader.lastFrameBytes}-byte frames)',
           );
         }
         final snapshot = decodeSnapshot(
@@ -204,8 +218,6 @@ class BleDesktop {
           'sharing still on?',
         );
       } on Object catch (error) {
-        // A mixed payload, a dropped link or a stalled chunk: the next attempt
-        // reconnects, which rewinds the phone's cursor for this client.
         lastError = error;
         await _closeLink(address);
         if (attempt + 1 < readAttempts) {
@@ -240,9 +252,9 @@ class BleDesktop {
     _usedAt[address] = DateTime.now();
   }
 
-  static Future<BleChunkReader> _payload(String address) async {
-    // Rewind this link's cursor: the phone advances it per client, so a read
-    // that stopped halfway would otherwise resume mid-payload.
+  /// Rewinds this link's cursor: the phone advances it per client, so a read
+  /// that stopped halfway would otherwise resume mid-payload.
+  static Future<void> _rewind(String address) async {
     try {
       await WinBle.write(
         address: address,
@@ -253,20 +265,34 @@ class BleDesktop {
       ).timeout(chunkTimeout);
     } on Object {
       // A phone that refuses the reset still serves from wherever its cursor
-      // is; the index in every chunk puts the pieces back in order.
+      // is; the index in every chunk puts the pieces back in order, and a
+      // chunk that comes round again restarts the payload below.
     }
+  }
 
-    final reader = BleChunkReader();
-    for (var count = 0; count < readLimit; count++) {
+  static Future<BleChunkReader> _payload(String address) async {
+    await _rewind(address);
+    var reader = BleChunkReader();
+    var restarts = 0;
+    for (var read = 0; read < readLimit; read++) {
       final raw = await WinBle.read(
         address: address,
         serviceId: serviceUuid,
         characteristicId: dataUuid,
       ).timeout(chunkTimeout);
-      // Two bytes is an empty share: index 0 of 0.
       if (raw.isEmpty) break;
-      if (reader.add(raw)) break;
+      // Two bytes is an empty share: index 0 of 0.
       if (raw.length < 3) break;
+      try {
+        if (reader.add(raw)) return reader;
+      } on RemoteException {
+        // The reading under this pass changed. Start the payload again rather
+        // than hand back bytes from two of them.
+        if (restarts >= payloadRestarts) rethrow;
+        restarts++;
+        reader = BleChunkReader();
+        await _rewind(address);
+      }
     }
     return reader;
   }
