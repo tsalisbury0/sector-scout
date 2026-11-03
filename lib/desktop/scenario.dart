@@ -60,6 +60,7 @@ class ScenarioCell {
         'registered': registered,
         'cellId': cellIdFor(mcc, mnc),
         'tac': tac,
+        'pci': pci,
         'mcc': anonymous ? null : mcc,
         'mnc': anonymous ? null : mnc,
         'dbm': dbm + drift,
@@ -568,7 +569,11 @@ class CustomSource {
   /// What goes on the wire: a source with no NR leg cannot claim NR.
   String get wireOverride {
     if (sendsNr) return override;
-    if (sendsLte && override != 'NONE') return override;
+    // An LTE-only source may still claim aggregation, but nothing that names
+    // NR: the payload carries no NR cell to back it up.
+    if (sendsLte && (override == 'LTE_CA' || override == 'LTE_ADVANCED_PRO')) {
+      return override;
+    }
     return 'NONE';
   }
 

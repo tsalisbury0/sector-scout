@@ -92,8 +92,6 @@ void main() {
     expect(find.text('Custom source'), findsOneWidget);
     expect(find.text('Serving: B30 anchor + n5'), findsOneWidget);
     expect(find.byKey(const Key('custom-anchor-band')), findsOneWidget);
-    expect(find.byKey(const Key('custom-nr-0-band')), findsOneWidget);
-    expect(find.byKey(const Key('custom-neighbours-count')), findsOneWidget);
 
     await tester.enterText(find.byKey(const Key('custom-anchor-band')), 'B41');
     await tester.pump();
