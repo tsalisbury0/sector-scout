@@ -2,7 +2,9 @@
 
 Writes a self-contained folder to build/windows/dist: the executable, its
 Python runtime and the data files it reads (bands.json, plmns.json, the icon).
-Run the .iss in desktop/ with Inno Setup to turn that folder into an installer.
+
+The .iss in desktop/ packages the Flutter app, not this console: the console
+ships as the desktop zip, and this script is how to make a console exe by hand.
 """
 
 from __future__ import annotations

@@ -10,6 +10,7 @@ on:
       - "windows/**"
       - "pubspec.yaml"
       - "pubspec.lock"
+      - "desktop/Sector Scout.iss"
       - ".github/workflows/windows-desktop.yml"
   workflow_dispatch:
 
@@ -76,10 +77,24 @@ jobs:
           git commit -m "Windows build log"
           git push -f "https://x-access-token:$env:TOKEN@github.com/${{ github.repository }}.git" ci-build-log
 
+      - name: Build the installer
+        shell: pwsh
+        # Proves the Inno script still compiles against this build, and gives a
+        # testable installer without cutting a release.
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "desktop\Sector Scout.iss"
+
       - uses: actions/upload-artifact@v4
         with:
           name: sector-scout-windows
           # upload-artifact zips a directory itself, so the release folder goes
           # up as it is built: exe, DLLs, data and all.
           path: build/windows/x64/runner/Release/**
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sector-scout-windows-installer
+          path: build/installer/*.exe
           if-no-files-found: error
