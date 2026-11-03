@@ -1,7 +1,8 @@
 name: Release
 
-# The APK and the desktop package are built here and attached to a GitHub
-# Release. Nothing built is committed: the repository holds source only.
+# The APK, the Windows app and the desktop package are built here and attached
+# to a GitHub Release. Nothing built is committed: the repository holds source
+# only.
 on:
   push:
     tags: ["v*"]
@@ -57,12 +58,12 @@ jobs:
           cp bands.json "$root/bands.json"
           cat > "$root/README.txt" <<'TXT'
           Sector Scout Desktop
-          
+
           Needs Python 3 on Windows. There is nothing to install: the console
           uses tkinter, which ships with Python.
-          
+
               python desktop\sector_scout_desktop.py
-          
+
           Use pythonw.exe instead of python.exe to start it without a console
           window. Keep bands.json in the folder above desktop\, where the script
           looks for it.
@@ -70,7 +71,7 @@ jobs:
           Bluetooth sharing and watching need one extra package:
 
               pip install -r desktop/requirements.txt
-          
+
           It answers the same /snapshot JSON as the phone, on port 41729, and
           polls phones that have LAN or Bluetooth sharing turned on.
           TXT
@@ -82,8 +83,11 @@ jobs:
           if-no-files-found: error
 
   windows:
-    name: Windows app
+    name: Python console installer
     runs-on: windows-latest
+    # The installer is a convenience, not the release's reason to exist: a
+    # break here cannot hold back a release that already has the app zip.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -104,9 +108,41 @@ jobs:
           path: build/installer/*.exe
           if-no-files-found: error
 
+  flutter-windows:
+    name: Windows app
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Enable Developer Mode
+        shell: pwsh
+        # Flutter needs to create plugin symlinks, which Windows only allows
+        # with Developer Mode on (or an elevated process). The runner is admin.
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+      - name: Fetch packages
+        run: flutter pub get
+      - name: Build
+        run: flutter build windows --release
+      - name: Package the app folder
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $stage = "sector-scout-windows-$version"
+          Copy-Item -Recurse "build\windows\x64\runner\Release" $stage
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-exe
+          path: sector-scout-windows-*.zip
+          if-no-files-found: error
+
   release:
     name: Publish the release
-    needs: [android, desktop, windows]
+    needs: [android, desktop, windows, flutter-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -118,3 +154,18 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          body: |
+            The Windows app, the Python console and the phone app are three
+            separate downloads above.
+
+            - **sector-scout-windows-*.zip** — the Windows app. Unzip the folder
+              and run `SectorScout.exe`; nothing to install.
+            - **sector-scout-desktop-*.zip** — the Python console. Needs Python 3
+              on this machine; see the README inside.
+            - **sector-scout-*.apk** — the Android phone app.
+
+            **Note:** the Windows app's Bluetooth watching is new and can be
+            unreliable — it is the piece most likely to misbehave, and a phone
+            that will not answer over Bluetooth may still answer over Wi-Fi, or
+            through the Python console. (The reading over Wi-Fi and the serving
+            of test readings are unaffected.)
