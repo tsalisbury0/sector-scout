@@ -165,7 +165,7 @@ class UpdateChecker {
       for (final release in releases) {
         if (betas.value == false && release.prerelease) continue;
         if (release.tag == kBuildTag || release.tag == _skipTag) continue;
-        // Same version numbers and the same kind of build is this build under
+        // Same version numbers of this build's release is this build under
         // another angle (or an alias) — never offer it.
         if (release.order == current.order &&
             release.prerelease == current.prerelease) {
@@ -186,7 +186,7 @@ class UpdateChecker {
       // prerelease matters even without a number change.
       final newer = best.order > current.order ||
           (best.order == current.order && best.prerelease == false && _isBetaBuild());
-      update.value = newer ? UpdateAvailable(best.info) : null;
+      update.value = newer ? UpdateAvailable(best) : null;
     } catch (error) {
       update.value = UpdateFailed('Update check failed: $error');
     }
@@ -201,7 +201,7 @@ class UpdateChecker {
       // Desktop, or a release without an APK: the release page is the way in.
       unawaited(launchUrl(
         Uri.parse(info.pageUrl),
-        mode: LaunchUrlMode.externalApplication,
+        mode: LaunchMode.externalApplication,
       ));
       update.value = null;
       return;
