@@ -124,24 +124,32 @@ class _CustomSourceDialogState extends State<CustomSourceDialog> {
                       style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                     ),
                   ),
-                  DropdownButton<String>(
-                    value: _override,
-                    dropdownColor: AppColors.surface,
-                    underline: const SizedBox.shrink(),
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: AppColors.textPrimary,
+                  // Expanded and ellipsised: these labels are long, and a
+                  // dialog 460 px wide has to hold the whole list.
+                  Expanded(
+                    child: DropdownButton<String>(
+                      value: _override,
+                      isExpanded: true,
+                      dropdownColor: AppColors.surface,
+                      underline: const SizedBox.shrink(),
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.textPrimary,
+                      ),
+                      items: [
+                        for (final entry in _overrides.entries)
+                          DropdownMenuItem(
+                            value: entry.key,
+                            child: Text(
+                              entry.value,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) setState(() => _override = value);
+                      },
                     ),
-                    items: [
-                      for (final entry in _overrides.entries)
-                        DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) setState(() => _override = value);
-                    },
                   ),
                 ],
               ),
