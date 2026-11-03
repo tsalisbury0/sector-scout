@@ -288,7 +288,16 @@ class BleDesktop {
       } on RemoteException {
         // The reading under this pass changed. Start the payload again rather
         // than hand back bytes from two of them.
-        if (restarts >= payloadRestarts) rethrow;
+        if (restarts >= payloadRestarts) {
+          // The frame size is what says which end to look at: 20-byte frames
+          // mean the bridge never agreed a larger MTU, so a reading is far more
+          // chunks than the phone's update window allows.
+          throw RemoteException(
+            'the phone replaced its reading mid-read every time '
+            '(${reader.lastFrameBytes}-byte frames, '
+            '${reader.chunkCount} of ${reader.totalChunks} chunks)',
+          );
+        }
         restarts++;
         reader = BleChunkReader();
         await _rewind(address);
