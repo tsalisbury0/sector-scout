@@ -43,23 +43,64 @@ class LanDiscovery {
   /// phone's stack enjoys, and the batch keeps the sweep quick anyway.
   static const int batch = 48;
 
-  /// Every other host on this phone's subnets that answers with a reading.
+  /// Every IPv4 address on an interface another device could reach.
   ///
-  /// Returns an empty list when the phone has no LAN address at all, which is
-  /// the mobile-data-only case — there is nothing to sweep in that state.
+  /// Read from the interfaces themselves rather than through
+  /// [LanSharingServer.localAddresses]: that one keeps only the phone's Android
+  /// adapter names (`wlan`, `rndis`, `p2p`…), and on a desktop the adapters are
+  /// called `Wi-Fi`, `Ethernet` or nothing recognisable at all. Reusing it left
+  /// the sweep with no address to sweep on Windows, which made Scan look broken
+  /// however many phones were sharing.
+  static Future<List<String>> localAddresses() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        includeLinkLocal: false,
+        type: InternetAddressType.IPv4,
+      );
+      final addresses = <String>[];
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          final ip = address.address;
+          // Loopback and the self-assigned 169.254 range are not a LAN: neither
+          // has a subnet that can hold another phone.
+          if (ip.startsWith('127.') || ip.startsWith('169.254.')) continue;
+          addresses.add(ip);
+        }
+      }
+      return addresses;
+    } on Object {
+      return const [];
+    }
+  }
+
+  /// The /24 prefixes to sweep, one per LAN interface, in a stable order.
+  ///
+  /// Empty means this machine is on no network at all, which is worth telling
+  /// the user apart from a sweep that found nothing.
+  static Future<List<String>> subnets() async {
+    final prefixes = <String>{};
+    for (final address in await localAddresses()) {
+      final dot = address.lastIndexOf('.');
+      if (dot > 0) prefixes.add(address.substring(0, dot));
+    }
+    return prefixes.toList()..sort();
+  }
+
+  /// Every other host on this machine's subnets that answers with a reading.
+  ///
+  /// Returns an empty list when there is no LAN address at all, which is the
+  /// mobile-data-only case — there is nothing to sweep in that state.
   static Future<List<LanPeer>> scan({
     int port = LanSharingServer.sharePort,
   }) async {
-    final addresses = await LanSharingServer.localAddresses();
-    if (addresses.isEmpty) return const [];
-    final own = addresses.toSet();
+    final own = (await localAddresses()).toSet();
+    final prefixes = await subnets();
+    if (prefixes.isEmpty) return const [];
     final client = HttpClient()..connectionTimeout = timeout;
     final peers = <LanPeer>[];
     try {
-      for (final address in addresses) {
-        final dot = address.lastIndexOf('.');
-        if (dot <= 0) continue;
-        final prefix = address.substring(0, dot);
+      for (final prefix in prefixes) {
         for (var start = 1; start <= 254; start += batch) {
           final stop = start + batch - 1;
           final found = await Future.wait([

@@ -13,7 +13,7 @@ import '../theme/app_colors.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/tech_badge.dart';
 
-import 'custom_source_dialog.dart';
+import 'custom_source_screen.dart';
 
 /// The desktop console: every watched phone gets its own card, and the cards
 /// sit side by side instead of stacking. It draws the same [ServingView] rows
@@ -156,10 +156,12 @@ class _DesktopHomeState extends State<DesktopHome> {
     unawaited(_saveConfig());
   }
 
-  /// The editor, or null when it is dismissed.
-  Future<CustomSource?> _editCustom() => showDialog<CustomSource>(
-        context: context,
-        builder: (context) => CustomSourceDialog(initial: _custom),
+  /// The editor page, or null when it is dismissed without serving.
+  Future<CustomSource?> _editCustom() =>
+      Navigator.of(context).push<CustomSource>(
+        MaterialPageRoute(
+          builder: (context) => CustomSourceScreen(initial: _custom),
+        ),
       );
 
   /// Re-opens the editor for the source that is already selected.
@@ -182,7 +184,19 @@ class _DesktopHomeState extends State<DesktopHome> {
       _status = 'Scanning the network on port ${DesktopTestSource.defaultPort}…';
     });
     try {
-      final found = await (widget.scan ?? () => LanDiscovery.scan())();
+      // A PC with no LAN address has nothing to sweep, and saying so is the
+      // difference between a silent sweep and a broken one.
+      final sweep = widget.scan;
+      if (sweep == null && (await LanDiscovery.subnets()).isEmpty) {
+        if (!mounted) return;
+        setState(
+          () => _status =
+              'This PC has no Wi-Fi or Ethernet address, so there is nothing '
+              'to scan.',
+        );
+        return;
+      }
+      final found = await (sweep ?? () => LanDiscovery.scan())();
       if (!mounted) return;
       final known = _peers.map((peer) => peer.address).toSet();
       final fresh = <String>[];
@@ -439,13 +453,22 @@ class _SourceBar extends StatelessWidget {
               },
             ),
           ),
-          if (scenarioId == 'custom')
-            IconButton(
-              tooltip: 'Edit the custom source',
+          // The custom source has its own page, reachable whether or not it
+          // is the scenario being served.
+          Tooltip(
+            message: 'Edit the custom source',
+            child: TextButton.icon(
               onPressed: onEditCustom,
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              color: AppColors.textMuted,
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Custom source'),
+              style: TextButton.styleFrom(
+                foregroundColor: scenarioId == 'custom'
+                    ? AppColors.accent
+                    : AppColors.textMuted,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
+          ),
           const SizedBox(width: 12),
           FilledButton(
             onPressed: onToggle,

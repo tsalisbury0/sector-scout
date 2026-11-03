@@ -77,7 +77,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('the custom source is edited and then served',
+  testWidgets('the custom source is edited on its own page and then served',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: DesktopHome(config: DesktopConfig(scenarioId: 'custom')),
@@ -87,9 +87,19 @@ void main() {
 
     await tester.tap(find.byTooltip('Edit the custom source'));
     await tester.pumpAndSettle();
-    expect(find.text('Custom source'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('custom-lte-band')), '41');
+    // A page, not a dialog: it has its own route and the whole editor on it.
+    expect(find.text('Custom source'), findsOneWidget);
+    expect(find.text('Serving: B30 anchor + n5'), findsOneWidget);
+    expect(find.byKey(const Key('custom-anchor-band')), findsOneWidget);
+    expect(find.byKey(const Key('custom-nr-0-band')), findsOneWidget);
+    expect(find.byKey(const Key('custom-neighbours-count')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('custom-anchor-band')), 'B41');
+    await tester.pump();
+
+    expect(find.text('Serving: B41 anchor + n5'), findsOneWidget);
+
     await tester.tap(find.text('Serve this'));
     await tester.pumpAndSettle();
 
