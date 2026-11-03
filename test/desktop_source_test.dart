@@ -244,6 +244,99 @@ void main() {
       expect(sim.neighbours.map((cell) => cell.pci).toSet(), hasLength(3));
     });
 
+    test('NSA carries one NR leg, SA aggregates up to five', () {
+      const legs = [
+        CustomCarrier(band: 5, arfcn: 176300, site: 1053255, sector: 1),
+        CustomCarrier(band: 41, arfcn: 519000, site: 1053255, sector: 2),
+      ];
+      const nsa = CustomSource(override: 'NR_NSA', nr: legs);
+      const sa = CustomSource(override: 'NR_SA', nr: legs);
+
+      expect(nsa.maxNr, 1);
+      expect(nsa.servedNr, hasLength(1));
+      expect(sa.maxNr, 5);
+      expect(sa.servedNr, hasLength(2));
+      expect(_read(sa.build()).sims.single.cells, hasLength(2));
+    });
+
+    test('the advanced flavours are one wire value split by the anchor', () {
+      const anchored = CustomSource(override: 'NR_ADVANCED');
+      const standalone = CustomSource(
+        override: 'NR_ADVANCED',
+        lte: CustomCarrier(enabled: false, band: 30),
+      );
+      final pair = _read(anchored.build()).sims.single;
+      final alone = _read(standalone.build()).sims.single;
+
+      expect(anchored.wireOverride, 'NR_ADVANCED');
+      expect(pair.nrServing!.cellId, isNull);
+      expect(pair.nsaGnbEstimate, isNotNull);
+      expect(standalone.wireOverride, 'NR_ADVANCED');
+      expect(alone.lteServing, isNull);
+      expect(alone.nrServing!.cellId, isNotNull);
+    });
+
+    test('a PCI outside what a radio can report is clamped', () {
+      final lte = _read(
+        const CustomSource(
+          override: 'NONE',
+          lte: CustomCarrier(band: 2, arfcn: 700, pci: 900),
+          nr: [],
+        ).build(),
+      ).sims.single.lteServing!;
+      final nr = _read(
+        const CustomSource(
+          override: 'NR_SA',
+          lte: CustomCarrier(enabled: false, band: 30),
+          nr: [CustomCarrier(band: 41, arfcn: 519000, pci: 1200)],
+        ).build(),
+      ).sims.single.nrServing!;
+
+      expect(lte.pci, 503);
+      expect(nr.pci, 1007);
+    });
+
+    test('a blank identity still serves a valid cell', () {
+      final lte = _read(
+        const CustomSource(
+          override: 'NONE',
+          lte: CustomCarrier(band: 2, arfcn: 700),
+          nr: [],
+        ).build(),
+      ).sims.single.lteServing!;
+      final nr = _read(
+        const CustomSource(
+          override: 'NR_SA',
+          lte: CustomCarrier(enabled: false, band: 30),
+          nr: [CustomCarrier(band: 41, arfcn: 519000)],
+        ).build(),
+      ).sims.single.nrServing!;
+
+      expect(lte.cellId, '7864964');
+      expect(lte.enb, 30722);
+      expect(nr.cellId, '12590807089');
+    });
+
+    test('the level follows the level being served', () {
+      final cell = _read(
+        const CustomSource(
+          override: 'NONE',
+          lte: CustomCarrier(band: 2, arfcn: 700, dbm: -104),
+          nr: [],
+        ).build(),
+      ).sims.single.lteServing!;
+
+      // -104 dBm sits low on the platform's own 0-4 scale.
+      expect(cell.level, inInclusiveRange(1, 2));
+    });
+
+    test('a frequency and its channel convert both ways', () {
+      expect(lteMhz(9820, 30), closeTo(2355, 1));
+      expect(lteEarfcn(lteMhz(9820, 30), 30), 9820);
+      expect(nrArfcn(channelMhz(true, 5, 176300)), 176300);
+      expect(channelOf(false, 30, null), isNull);
+    });
+
     test('the editor starts on the middle of a band it knows', () {
       final channel = defaultChannel(41, false)!;
 
@@ -354,7 +447,11 @@ void main() {
           await client.getUrl(Uri.parse('http://127.0.0.1:${source.port}/health'));
       final healthResponse = await healthRequest.close();
       expect(healthResponse.statusCode, 200);
-      expect(await healthResponse.transform(utf8.decoder).join(), '{"ok":true}');
+      final health = jsonDecode(
+        await healthResponse.transform(utf8.decoder).join(),
+      ) as Map<Object?, Object?>;
+      expect(health['ok'], isTrue);
+      expect(health['port'], source.port);
     });
   });
 }

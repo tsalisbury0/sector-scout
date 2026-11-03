@@ -24,6 +24,7 @@ class ScenarioCell {
     this.gnb,
     this.sector,
     this.anonymous = false,
+    this.identifier,
   });
 
   final String tech; // 'LTE' or 'NR'
@@ -41,18 +42,29 @@ class ScenarioCell {
   /// supplemental downlink that is not moving data yet.
   final bool anonymous;
 
+  /// A cell identity to serve verbatim, for the fixed one the console falls
+  /// back to when the identity fields are blank.
+  final String? identifier;
+
   bool get isNr => tech == 'NR';
 
   /// The 28-bit ECI for LTE, or the 36-bit NCI for NR, packed from the site
   /// identity the way the operator's gNB width expects.
   String? cellIdFor(String? mcc, String? mnc) {
+    if (identifier != null) return identifier;
     if (isNr) {
       if (gnb == null) return null; // NSA legs carry no NCI on real radios
-      final shift = 36 - gnbBitsFor('$mcc-$mnc');
-      return ((gnb! << shift) | (sector ?? 0)).toString();
+      final bits = gnbBitsFor('$mcc-$mnc');
+      final shift = 36 - bits;
+      // Each side is masked to its own width: a sector typed past the low bits
+      // would otherwise carry into the tower number.
+      final gnbMask = (1 << bits) - 1;
+      final sectorMask = (1 << shift) - 1;
+      return (((gnb! & gnbMask) << shift) | ((sector ?? 0) & sectorMask))
+          .toString();
     }
     if (enb == null) return null;
-    return ((enb! << 8) | (sector ?? 0)).toString();
+    return (((enb! & 0xFFFFF) << 8) | ((sector ?? 0) & 0xFF)).toString();
   }
 
   Map<String, Object?> toMap(String? mcc, String? mnc, int drift) => {
@@ -64,7 +76,8 @@ class ScenarioCell {
         'mcc': anonymous ? null : mcc,
         'mnc': anonymous ? null : mnc,
         'dbm': dbm + drift,
-        'level': 3,
+        // The platform's own 0-4 scale, priced from the level being served.
+        'level': (((dbm + drift) + 120) / 10).round().clamp(0, 4).toInt(),
         'arfcn': arfcn,
         'bands': [if (band != null && band! > 0) band!],
         'rsrp': dbm + drift,
@@ -319,6 +332,10 @@ const Set<String> customOverrides = {
   'LTE_ADVANCED_PRO',
   'NR_NSA',
   'NR_SA',
+  // One value on the wire for both advanced flavours: the phone cannot tell
+  // whether it is holding an NSA pair or a standalone carrier, so what tells
+  // them apart is the anchor.
+  'NR_ADVANCED',
 };
 
 /// The overrides that mean the payload carries LTE and nothing else.
@@ -342,6 +359,54 @@ int? parseBandLabel(String text) {
   }
   return int.tryParse(cleaned.trim());
 }
+
+/// The PCI a cell of this technology can actually carry.
+///
+/// LTE has 504 physical cell identities (0-503) and NR has 1008 (0-1007). A
+/// number outside the range is one no radio can report, so it is clamped here
+/// rather than served and quietly decoded wrong by the phone.
+int pciFor(String tech, int? value, int fallback) {
+  if (value == null) return fallback;
+  final limit = tech == 'NR' ? 1007 : 503;
+  return value.clamp(0, limit).toInt();
+}
+
+/// Downlink centre frequency of an LTE carrier, in MHz.
+double? lteMhz(int? earfcn, int? band) {
+  if (earfcn == null || earfcn <= 0 || band == null) return null;
+  final plan = lteBandPlans[band];
+  if (plan == null) return null;
+  return plan.dlLow + 0.1 * (earfcn - plan.first);
+}
+
+/// The EARFCN for a downlink frequency, on that band's own raster.
+int? lteEarfcn(double? mhz, int? band) {
+  if (mhz == null || mhz <= 0 || band == null) return null;
+  final plan = lteBandPlans[band];
+  if (plan == null) return null;
+  return (plan.first + (mhz - plan.dlLow) / 0.1).round();
+}
+
+/// The NR-ARFCN for a downlink frequency, on the 3GPP global raster.
+int? nrArfcn(double? mhz) {
+  if (mhz == null || mhz <= 0) return null;
+  if (mhz < 3000) return (mhz / 0.005).round();
+  if (mhz < 24250.08) return (600000 + (mhz - 3000) / 0.015).round();
+  return (2016667 + (mhz - 24250.08) / 0.06).round();
+}
+
+/// Downlink centre frequency of a channel, in MHz.
+double? channelMhz(bool nr, int? band, int? channel) {
+  if (channel == null || channel <= 0) return null;
+  if (!nr) return lteMhz(channel, band);
+  if (channel < 600000) return channel * 0.005;
+  if (channel <= 2016666) return 3000 + (channel - 600000) * 0.015;
+  return 24250.08 + (channel - 2016667) * 0.06;
+}
+
+/// The channel for a frequency, or null when it cannot be worked out.
+int? channelOf(bool nr, int? band, double? mhz) =>
+    nr ? nrArfcn(mhz) : lteEarfcn(mhz, band);
 
 /// One editable carrier: the LTE anchor, a carrier aggregated under it, or an
 /// NR leg. The identity fields are the site the carrier looks like, so a real
@@ -516,8 +581,19 @@ class CustomSource {
   String get plmn => '$mcc$mnc';
 
   bool get isNrSa => override == 'NR_SA';
-  bool get isNsa => override == 'NR_NSA';
+  bool get isNsa => override == 'NR_NSA' || override == 'NR_ADVANCED';
   bool get isLteOnly => lteOnlyOverrides.contains(override);
+
+  /// How many NR legs this override allows.
+  ///
+  /// NR_NSA is a single secondary carrier attached to an LTE anchor, so one.
+  /// NR_SA can aggregate up to five. With no override stated the anchor decides:
+  /// an anchor that is actually serving means NSA, no anchor at all means SA.
+  int get maxNr {
+    if (override == 'NR_SA') return maxNrCarriers;
+    if (override == 'NR_NSA') return 1;
+    return anchor != null ? 1 : maxNrCarriers;
+  }
 
   /// The anchor that reaches the payload. Standalone has no LTE at all, so the
   /// anchor is held back rather than served as a second primary.
@@ -554,7 +630,7 @@ class CustomSource {
   /// dropped, because mmWave without CA is not a state any modem reports.
   List<CustomCarrier> get servedNr {
     if (isLteOnly) return const [];
-    final rows = switchedOnNr;
+    final rows = switchedOnNr.take(maxNr).toList();
     if (anchor == null &&
         rows.length == 1 &&
         fr2Bands.contains(rows.first.band)) {
@@ -679,7 +755,7 @@ class CustomSource {
   Scenario build() {
     final cells = <ScenarioCell>[];
     final lteRow = anchor;
-    final anchorPci = lteRow?.pci ?? 76;
+    final anchorPci = pciFor('LTE', lteRow?.pci, 76);
     final anchorDbm = lteRow?.dbm ?? -100;
 
     if (lteRow != null) {
@@ -693,6 +769,9 @@ class CustomSource {
           tac: lteRow.tac,
           enb: lteRow.site,
           sector: lteRow.sector,
+          // A cleared identity still has to be a valid cell: the console fell
+          // back to eNB 30722 / sector 36 rather than serving no NCI at all.
+          identifier: lteRow.site == null ? '7864964' : null,
         ),
       );
       for (final layer in servedLteLayers) {
@@ -707,10 +786,12 @@ class CustomSource {
             band: layer.band,
             arfcn: layer.arfcn ?? defaultChannel(layer.band!, false),
             dbm: layer.dbm,
-            pci: layer.pci ?? (anchorPci + 40) % 504,
+            pci: pciFor('LTE', layer.pci, (anchorPci + 40) % 504),
             tac: supplemental ? null : layer.tac,
             enb: supplemental ? null : layer.site,
             sector: supplemental ? null : layer.sector,
+            identifier:
+                supplemental || layer.site != null ? null : '7864964',
           ),
         );
       }
@@ -719,18 +800,22 @@ class CustomSource {
     // Under an LTE anchor the 5G leg arrives without its identity — no NCI, so
     // no sector, and no TAC either. Sending one would hide the app's estimate
     // path behind a number no phone would report.
-    final nsa = isNsa;
-    for (final leg in servedNr) {
+    final secondary = !isNrSa && anchor != null && servedNr.isNotEmpty;
+    for (var index = 0; index < servedNr.length; index++) {
+      final leg = servedNr[index];
       cells.add(
         ScenarioCell(
           tech: 'NR',
           band: leg.band,
           arfcn: leg.arfcn ?? defaultChannel(leg.band!, true),
           dbm: leg.dbm,
-          pci: leg.pci ?? 512,
-          tac: nsa ? null : leg.tac,
-          gnb: nsa ? null : leg.site,
-          sector: nsa ? null : leg.sector,
+          pci: pciFor('NR', leg.pci, 512 + index),
+          tac: secondary ? null : leg.tac,
+          gnb: secondary ? null : leg.site,
+          sector: secondary ? null : leg.sector,
+          identifier: secondary || leg.site != null
+              ? null
+              : '${12590807089 + index}',
         ),
       );
     }

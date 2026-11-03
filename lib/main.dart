@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'screens/desktop_home.dart';
 import 'screens/home_screen.dart';
 import 'services/app_settings.dart';
+import 'services/carrier_names.dart';
 import 'theme/app_colors.dart';
 
 bool get _isDesktop =>
@@ -39,6 +41,12 @@ Future<void> main() async {
       systemNavigationBarIconBrightness: Brightness.light,
       systemNavigationBarDividerColor: Colors.transparent,
     ));
+  }
+  if (_isDesktop) {
+    // The desk reads the same operator list the phone does, so a served reading
+    // is named the way the phone names it. A failed fetch just leaves the name
+    // the payload carried.
+    unawaited(CarrierNames.load().catchError((_) => false));
   }
   runApp(const CellTowerApp());
 }

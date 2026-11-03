@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../desktop/scenario.dart';
-import '../models/cell_snapshot.dart';
 import '../theme/app_colors.dart';
 
 /// Carriers the page offers as a shortcut for the MCC/MNC boxes.
@@ -15,14 +14,33 @@ const List<(String, String)> _carriers = [
   ('Dish', '313340'),
 ];
 
-/// The override choices, in the order the console listed them.
-const Map<String, String> _overrides = {
-  'NONE': 'NONE — LTE, no aggregation',
-  'LTE_CA': 'LTE_CA — carrier aggregation',
-  'LTE_ADVANCED_PRO': 'LTE_ADVANCED_PRO — LTE Advanced Pro',
-  'NR_NSA': 'NR_NSA — LTE anchor + NR leg',
-  'NR_SA': 'NR_SA — NR on its own',
-};
+/// One entry in the override picker: the label, the value it puts on the wire,
+/// and — for the two advanced flavours — whether picking it switches the anchor
+/// on or off.
+class _OverrideChoice {
+  const _OverrideChoice(this.label, this.wire, [this.anchor]);
+
+  final String label;
+  final String wire;
+  final bool? anchor;
+}
+
+/// The override list the console offered, and the value each entry sends.
+///
+/// `NR_ADVANCED` is one value on the wire — the phone cannot tell whether it is
+/// holding an NSA pair or a standalone carrier — so the two entries send the
+/// same thing and differ in what they set up: the NSA flavour keeps the anchor
+/// and its single leg, the SA flavour drops the anchor and opens the source to
+/// five aggregated carriers.
+const List<_OverrideChoice> _overrides = [
+  _OverrideChoice('NONE — LTE, no aggregation', 'NONE'),
+  _OverrideChoice('LTE_CA — carrier aggregation', 'LTE_CA'),
+  _OverrideChoice('LTE_ADVANCED_PRO — LTE Advanced Pro', 'LTE_ADVANCED_PRO'),
+  _OverrideChoice('NR_NSA — LTE anchor + NR leg', 'NR_NSA'),
+  _OverrideChoice('NR_SA — NR on its own', 'NR_SA'),
+  _OverrideChoice('NR_ADVANCED (NSA) — anchor + one leg', 'NR_ADVANCED', true),
+  _OverrideChoice('NR_ADVANCED (SA) — aggregated NR', 'NR_ADVANCED', false),
+];
 
 /// The custom source on a page of its own: every field of the reading is set by
 /// hand here — the network, the LTE anchor, any carriers aggregated under it,
@@ -51,7 +69,7 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
   late final TextEditingController _carrier;
   late final TextEditingController _mcc;
   late final TextEditingController _mnc;
-  late String _override;
+  late String _overrideLabel;
   late CustomCarrier _anchor;
   final List<_Slot> _layers = <_Slot>[];
   final List<_Slot> _legs = <_Slot>[];
@@ -67,7 +85,7 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
     _carrier = TextEditingController(text: initial.carrierName);
     _mcc = TextEditingController(text: initial.mcc);
     _mnc = TextEditingController(text: initial.mnc);
-    _override = initial.override;
+    _overrideLabel = _labelFor(initial);
     _anchor = initial.lte ??
         const CustomCarrier(band: 30, arfcn: 9820, dbm: -104, pci: 76);
     for (final row in initial.lteLayers.take(maxLteLayers)) {
@@ -104,13 +122,37 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
       carrierName: name.isEmpty ? _carrierNameFor('$mcc$mnc') : name,
       mcc: mcc,
       mnc: mnc,
-      override: _override,
+      override: _choice.wire,
       lte: _anchor,
       lteLayers: [for (final slot in _layers) slot.carrier],
       nr: [for (final slot in _legs) slot.carrier],
       neighbours: _neighbours,
     );
   }
+
+  /// The picker entry that describes a saved source. Both advanced flavours
+  /// carry the same wire value, so the anchor says which one it is.
+  static String _labelFor(CustomSource source) {
+    final v = source.override;
+    if (v == 'NR_ADVANCED') {
+      final anchored = source.lte?.enabled == true && source.lte!.hasBand;
+      for (final choice in _overrides) {
+        if (choice.wire == 'NR_ADVANCED' && choice.anchor == anchored) {
+          return choice.label;
+        }
+      }
+      return _overrides[5].label;
+    }
+    for (final choice in _overrides) {
+      if (choice.wire == v && choice.anchor == null) return choice.label;
+    }
+    return _overrides.first.label;
+  }
+
+  _OverrideChoice get _choice => _overrides.firstWhere(
+        (choice) => choice.label == _overrideLabel,
+        orElse: () => _overrides.first,
+      );
 
   static String _carrierNameFor(String plmn) {
     for (final entry in _carriers) {
@@ -247,7 +289,7 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
                       width: 250,
                       child: DropdownButton<String>(
                         key: const Key('custom-override'),
-                        value: _override,
+                        value: _overrideLabel,
                         isExpanded: true,
                         dropdownColor: AppColors.surface,
                         underline: const SizedBox.shrink(),
@@ -256,11 +298,11 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
                           color: AppColors.textPrimary,
                         ),
                         items: [
-                          for (final entry in _overrides.entries)
+                          for (final choice in _overrides)
                             DropdownMenuItem(
-                              value: entry.key,
+                              value: choice.label,
                               child: Text(
-                                entry.value,
+                                choice.label,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontSize: 12),
                               ),
@@ -268,7 +310,18 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
                         ],
                         onChanged: (value) {
                           if (value == null) return;
-                          setState(() => _override = value);
+                          final choice = _overrides.firstWhere(
+                            (entry) => entry.label == value,
+                          );
+                          setState(() {
+                            _overrideLabel = value;
+                            // An advanced flavour sets the source up as well as
+                            // naming it, so the name and the layout agree.
+                            final anchor = choice.anchor;
+                            if (anchor != null) {
+                              _anchor = _anchor.copyWith(enabled: anchor);
+                            }
+                          });
                         },
                       ),
                     ),
@@ -332,9 +385,10 @@ class _CustomSourceScreenState extends State<CustomSourceScreen> {
           _Section(
             title: '5G NR carriers',
             subtitle: 'Under NSA a leg is served without an NCI, so the app '
-                'shows its estimated gNB. Standalone sends the identity.',
+                'shows its estimated gNB. Standalone sends the identity, and '
+                'aggregates up to five legs.',
             action: TextButton.icon(
-              onPressed: _legs.length >= maxNrCarriers ? null : _addLeg,
+              onPressed: _legs.length >= source.maxNr ? null : _addLeg,
               icon: const Icon(Icons.add_rounded, size: 16),
               label: const Text('Add NR carrier'),
               style: TextButton.styleFrom(
@@ -625,6 +679,7 @@ class _CarrierRow extends StatefulWidget {
 class _CarrierRowState extends State<_CarrierRow> {
   late final TextEditingController _band;
   late final TextEditingController _arfcn;
+  late final TextEditingController _mhz;
   late final TextEditingController _dbm;
   late final TextEditingController _site;
   late final TextEditingController _sector;
@@ -643,6 +698,7 @@ class _CarrierRowState extends State<_CarrierRow> {
       text: carrier.band == null ? '' : '${widget.nr ? 'n' : 'B'}${carrier.band}',
     );
     _arfcn = TextEditingController(text: _text(carrier.arfcn));
+    _mhz = TextEditingController(text: _mhzText);
     _dbm = TextEditingController(text: '${carrier.dbm}');
     _site = TextEditingController(text: _text(carrier.site));
     _sector = TextEditingController(text: _text(carrier.sector));
@@ -654,6 +710,7 @@ class _CarrierRowState extends State<_CarrierRow> {
   void dispose() {
     _band.dispose();
     _arfcn.dispose();
+    _mhz.dispose();
     _dbm.dispose();
     _site.dispose();
     _sector.dispose();
@@ -673,10 +730,43 @@ class _CarrierRowState extends State<_CarrierRow> {
         dbm: int.tryParse(_dbm.text.trim()) ?? widget.carrier.dbm,
         site: int.tryParse(_site.text.trim()),
         sector: int.tryParse(_sector.text.trim()),
-        pci: int.tryParse(_pci.text.trim()),
+        // Clamped to what a radio can report, so a mistyped 900 is served as
+        // the last valid LTE identity rather than a number no modem sends.
+        pci: _pciValue,
         tac: int.tryParse(_tac.text.trim()),
       ),
     );
+  }
+
+  int? get _pciValue {
+    final typed = int.tryParse(_pci.text.trim());
+    if (typed == null) return null;
+    return pciFor(widget.nr ? 'NR' : 'LTE', typed, typed);
+  }
+
+  /// The frequency for the channel in the boxes, or an empty box.
+  String get _mhzText {
+    final band = parseBandLabel(_band.text);
+    final channel = int.tryParse(_arfcn.text.trim());
+    final mhz = channelMhz(widget.nr, band, channel);
+    return mhz == null ? '' : mhz.toStringAsFixed(2);
+  }
+
+  /// The channel and the frequency track each other, so whichever of the two
+  /// you know is the one you can fill in.
+  void _syncMhz() {
+    final text = _mhzText;
+    if (_mhz.text != text) _mhz.text = text;
+  }
+
+  void _mhzChanged(String text) {
+    final mhz = double.tryParse(text.trim());
+    final channel = channelOf(widget.nr, parseBandLabel(_band.text), mhz);
+    if (channel != null && _arfcn.text.trim() != '$channel') {
+      _arfcn.text = '$channel';
+    }
+    _emit();
+    setState(() {});
   }
 
   /// A band is a shortcut for its channel window's middle, the way the
@@ -687,22 +777,9 @@ class _CarrierRowState extends State<_CarrierRow> {
       final channel = defaultChannel(band, widget.nr);
       if (channel != null) _arfcn.text = '$channel';
     }
+    _syncMhz();
     _emit();
     setState(() {});
-  }
-
-  String? get _mhz {
-    final channel = int.tryParse(_arfcn.text.trim());
-    if (channel == null || channel <= 0) return null;
-    final band = parseBandLabel(_band.text);
-    final tower = CellTower(
-      tech: widget.nr ? CellTech.nr : CellTech.lte,
-      registered: true,
-      arfcn: channel,
-      bands: [?band],
-    );
-    final mhz = tower.downlinkMhz;
-    return mhz == null ? null : '${mhz.toStringAsFixed(2)} MHz';
   }
 
   @override
@@ -769,26 +846,18 @@ class _CarrierRowState extends State<_CarrierRow> {
                 width: 96,
                 enabled: _enabled,
                 onChanged: (_) {
+                  _syncMhz();
                   _emit();
                   setState(() {});
                 },
               ),
-              _Labelled(
+              _NumberField(
+                fieldKey: _key('mhz'),
                 label: 'MHz',
-                child: SizedBox(
-                  width: 96,
-                  height: 34,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _mhz ?? '—',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ),
-                ),
+                controller: _mhz,
+                width: 88,
+                enabled: _enabled,
+                onChanged: _mhzChanged,
               ),
               _NumberField(
                 fieldKey: _key('dbm'),

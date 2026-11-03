@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import '../services/lan_discovery.dart';
 import 'scenario.dart';
 
 /// Serves a [Scenario] as the phone's own `/snapshot` JSON, on the same fixed
@@ -19,6 +20,7 @@ class DesktopTestSource {
 
   HttpServer? _server;
   String? _failure;
+  String? _lanHost;
 
   bool get running => _server != null;
   String? get failure => _failure;
@@ -31,13 +33,24 @@ class DesktopTestSource {
       ? null
       : Uri.parse('http://127.0.0.1:${_server!.port}/snapshot');
 
+  /// The same address on this machine's LAN, which is the one to type on a
+  /// phone; null when the PC has no LAN address.
+  Uri? get lanUri => _server == null || _lanHost == null
+      ? null
+      : Uri.parse('http://$_lanHost:${_server!.port}/snapshot');
+
   /// Returns null when it bound, or the reason it could not.
   Future<String?> start() async {
     if (_server != null) return null;
     try {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, preferredPort);
+      // Bound to every interface, not loopback: the phone that watches this
+      // has to be able to reach it across the network, which is the whole
+      // point of the test source.
+      final server = await HttpServer.bind(InternetAddress.anyIPv4, preferredPort);
       server.listen(_handle);
       _server = server;
+      final addresses = await LanDiscovery.localAddresses();
+      _lanHost = addresses.isEmpty ? null : addresses.first;
       _failure = null;
       return null;
     } on Object catch (error) {
@@ -49,6 +62,7 @@ class DesktopTestSource {
   Future<void> stop() async {
     final server = _server;
     _server = null;
+    _lanHost = null;
     await server?.close(force: true);
   }
 
@@ -59,7 +73,11 @@ class DesktopTestSource {
     try {
       final path = request.uri.path;
       if (path == '/health') {
-        response.write(jsonEncode({'ok': true}));
+        response.write(jsonEncode({
+          'ok': true,
+          'port': _server?.port,
+          'dashboard': false,
+        }));
       } else if (path == '/snapshot' || path == '/api/snapshot' || path == '/') {
         response.write(jsonEncode(scenario.payload(drift: Scenario.drift(_drift))));
       } else {

@@ -254,6 +254,7 @@ class _DesktopHomeState extends State<DesktopHome> {
             customSummary: _custom.summary,
             running: _source.running,
             uri: _source.uri,
+            lanUri: _source.lanUri,
             failure: _source.failure,
             onScenario: _selectScenario,
             onEditCustom: _editSelectedCustom,
@@ -393,6 +394,7 @@ class _SourceBar extends StatelessWidget {
     required this.customSummary,
     required this.running,
     required this.uri,
+    required this.lanUri,
     required this.failure,
     required this.onScenario,
     required this.onEditCustom,
@@ -403,6 +405,9 @@ class _SourceBar extends StatelessWidget {
   final String customSummary;
   final bool running;
   final Uri? uri;
+
+  /// The address a phone on the same network can actually reach.
+  final Uri? lanUri;
   final String? failure;
   final ValueChanged<String> onScenario;
   final VoidCallback onEditCustom;
@@ -483,7 +488,10 @@ class _SourceBar extends StatelessWidget {
           Expanded(
             child: Text(
               running
-                  ? '${uri ?? ""}  ·  a phone can Watch this address'
+                  ? lanUri == null
+                      ? '${uri ?? ""}  ·  no LAN address, so only this PC can '
+                          'reach it'
+                      : '$lanUri  ·  a phone can Watch this address'
                   : failure == null
                       ? 'not serving'
                       : 'port ${DesktopTestSource.defaultPort} is taken: $failure',
