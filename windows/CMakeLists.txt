@@ -63,6 +63,18 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# permission_handler_windows builds as C++20 but also passes /await, which
+# selects MSVC's <experimental/coroutine>. Newer MSVC turns that header into a
+# hard error (STL1011). Without /await, C++/WinRT uses the standard <coroutine>.
+if(TARGET permission_handler_windows_plugin)
+  get_target_property(_phw_options permission_handler_windows_plugin COMPILE_OPTIONS)
+  if(_phw_options)
+    list(REMOVE_ITEM _phw_options "/await")
+    set_target_properties(permission_handler_windows_plugin PROPERTIES
+      COMPILE_OPTIONS "${_phw_options}")
+  endif()
+endif()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
