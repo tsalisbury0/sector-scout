@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../desktop/desktop_config.dart';
 import '../desktop/scenario.dart';
 import '../desktop/test_source.dart';
+import '../models/band_filters.dart';
 import '../models/cell_snapshot.dart';
 import '../services/lan_discovery.dart';
 import '../services/remote_client.dart';
@@ -15,9 +16,10 @@ import '../widgets/tech_badge.dart';
 
 import 'custom_source_screen.dart';
 
-/// The desktop console: every watched phone gets its own card, and the cards
-/// sit side by side instead of stacking. It draws the same [ServingView] rows
-/// and the same widgets as the phone, so the two cannot drift apart.
+/// The desktop console: every watched phone gets its own card, under the same
+/// Phones / Test source tabs the Python console used, and the cards sit side by
+/// side instead of stacking. It draws the same [ServingView] rows and the same
+/// widgets as the phone, so the two cannot drift apart.
 class DesktopHome extends StatefulWidget {
   const DesktopHome({super.key, this.config, this.scan});
 
@@ -34,29 +36,39 @@ class DesktopHome extends StatefulWidget {
 
 class _DesktopHomeState extends State<DesktopHome> {
   final List<_Peer> _peers = <_Peer>[];
+  final TextEditingController _address = TextEditingController();
   late final DesktopConfig _config;
   final DesktopTestSource _source = DesktopTestSource();
   late String _scenarioId;
   late CustomSource _custom;
+  late bool _corrections;
   Timer? _timer;
   bool _scanning = false;
 
+  /// 0 is Phones, 1 is Test source.
+  int _tab = 0;
+
+  DateTime _refreshedAt = DateTime.now();
+
   /// What the footer was last told — a sweep's result, mostly.
   String? _status;
+
+  /// Why the address box refused the last add.
+  String? _addError;
 
   @override
   void initState() {
     super.initState();
     _config = widget.config ?? DesktopConfig.load();
+    _corrections = _config.corrections;
+    _applyCorrections();
 
     // The phones and the scenario are what the console remembered, so the
-    // window comes back the way it was left.
-    // A config written by the Python console names its own scenarios, so an
-    // id this build does not know falls back to the first preset; the editor's
-    // own source comes back from the fields it saved.
+    // window comes back the way it was left. A config written by the Python
+    // console names its own scenarios and stores each phone as an object, and
+    // both are read back into this build's shape.
     _custom = _config.custom;
-    _scenarioId = Scenario.byId(_config.scenarioId)?.id ??
-        (_config.scenarioId == 'custom' ? 'custom' : Scenario.presets.first.id);
+    _scenarioId = _resolveScenarioId(_config.scenarioId);
     _source.scenario = _scenarioFor(_scenarioId);
     for (final address in _config.phones) {
       _peers.add(_Peer(address));
@@ -70,11 +82,17 @@ class _DesktopHomeState extends State<DesktopHome> {
   @override
   void dispose() {
     _timer?.cancel();
+    _address.dispose();
     unawaited(_source.stop());
     for (final peer in _peers) {
       peer.client.dispose();
     }
     super.dispose();
+  }
+
+  void _applyCorrections() {
+    BandFilters.tmobileBands = _corrections;
+    BandFilters.cbrs = _corrections;
   }
 
   Future<void> _pollAll() async {
@@ -92,49 +110,71 @@ class _DesktopHomeState extends State<DesktopHome> {
         setState(() => peer.error = '$error');
       }
     }
+    if (mounted) setState(() => _refreshedAt = DateTime.now());
   }
 
-  Future<void> _addPhone() async {
-    final address = await showDialog<String>(
-      context: context,
-      builder: (context) => const _AddPhoneDialog(),
-    );
-    if (address == null || address.trim().isEmpty) return;
+  /// The address box is the console's "ip or ip:port" entry: a bare address is
+  /// given the share port, and the same address is not watched twice.
+  Future<void> _addFromField() async {
+    final text = _address.text.trim();
+    if (text.isEmpty) {
+      setState(() => _addError = 'Enter a phone address first.');
+      return;
+    }
+    if (_peers.any((peer) => peer.address == text)) {
+      setState(() => _addError = 'That address is already being watched.');
+      return;
+    }
     setState(() {
-      _peers.add(_Peer(address.trim()));
+      _peers.add(_Peer(text));
+      _address.clear();
+      _addError = null;
       _status = null;
     });
     unawaited(_saveConfig());
     await _pollAll();
   }
 
-  void _clear() {
-    for (final peer in _peers) {
-      peer.client.dispose();
-    }
+  void _removePeer(_Peer peer) {
+    peer.client.dispose();
     setState(() {
-      _peers.clear();
+      _peers.remove(peer);
       _status = null;
     });
     unawaited(_saveConfig());
   }
 
-  /// Remembers the watched phones and the served scenario.
+  /// Remembers the watched phones, the served scenario and the band switches.
   Future<void> _saveConfig() async {
     _config.phones
       ..clear()
       ..addAll(_peers.map((peer) => peer.address));
     _config.scenarioId = _scenarioId;
+    _config.corrections = _corrections;
     _config.custom = _custom;
     await _config.save();
   }
 
-  Scenario _scenarioFor(String id) =>
-      id == 'custom' ? _custom.build() : Scenario.byId(id) ?? Scenario.presets.first;
+  Scenario _scenarioFor(String id) => id == 'custom'
+      ? _custom.build()
+      : Scenario.byId(id) ?? Scenario.presets.first;
 
-  /// The custom source is edited before it is selected: picking it from the
-  /// list and typing into the dialog are the same gesture, and cancelling
-  /// leaves whatever was serving untouched.
+  /// The console saved its own scenario names, so a name this build does not
+  /// know is matched to the preset it describes before falling back.
+  static String _resolveScenarioId(String saved) {
+    if (Scenario.byId(saved) != null) return saved;
+    final text = saved.toLowerCase();
+    if (text.contains('custom')) return 'custom';
+    if (text.contains('dual')) return 'dual-sim';
+    if (text.contains('b106') || text.contains('anterix')) return 'anterix-b106';
+    if (text.contains('n71')) return 'tmo-n71';
+    if (text.contains('n41') || text.contains('t-mobile')) return 'tmo-n41';
+    if (text.contains('nsa') || text.contains('at&t')) return 'att-nsa';
+    return Scenario.presets.first.id;
+  }
+
+  /// Picking the custom entry edits it first, so the list and the fields are
+  /// the same gesture and cancelling leaves what is serving untouched.
   Future<void> _selectScenario(String id) async {
     if (id == 'custom') {
       final edited = await _editCustom();
@@ -176,7 +216,7 @@ class _DesktopHomeState extends State<DesktopHome> {
   }
 
   /// Sweeps the subnet for phones answering this app's `/health` — the
-  /// console's "Scan network" button, over the code the phone app uses.
+  /// console's "Scan" button, over the code the phone app uses.
   Future<void> _scan() async {
     if (_scanning) return;
     setState(() {
@@ -234,6 +274,14 @@ class _DesktopHomeState extends State<DesktopHome> {
     if (mounted) setState(() {});
   }
 
+  String get _sourceLabel {
+    if (!_source.running) return 'test source stopped';
+    final uri = _source.lanUri ?? _source.uri;
+    return uri == null
+        ? 'test source serving'
+        : 'test source serving on $uri';
+  }
+
   @override
   Widget build(BuildContext context) {
     final answering = _peers.where((p) => p.snapshot != null).length;
@@ -242,62 +290,137 @@ class _DesktopHomeState extends State<DesktopHome> {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          _TopBar(
-            onAdd: _addPhone,
-            onClear: _clear,
-            onRefresh: _pollAll,
-            onScan: _scan,
-            scanning: _scanning,
-          ),
-          _SourceBar(
-            scenarioId: _scenarioId,
-            customSummary: _custom.summary,
-            running: _source.running,
-            uri: _source.uri,
-            lanUri: _source.lanUri,
-            failure: _source.failure,
-            onScenario: _selectScenario,
-            onEditCustom: _editSelectedCustom,
-            onToggle: _toggleSource,
-          ),
+          _Header(status: _sourceLabel),
+          _Tabs(index: _tab, onChanged: (value) => setState(() => _tab = value)),
           Expanded(
-            child: _peers.isEmpty
-                ? const _EmptyState()
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        padding: const EdgeInsets.all(12),
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            for (final peer in _peers)
-                              SizedBox(
-                                width: _cardWidth(constraints.maxWidth),
-                                child: _PhoneCard(peer: peer),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+            child: IndexedStack(
+              index: _tab,
+              children: [_phonesPane(), _sourcePane()],
+            ),
           ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: Text(
-              _status ??
-                  '${_peers.length} watched · $answering answering · '
-              'this PC answers on 127.0.0.1:41729 when the phone app is not using it',
-              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
-            ),
+          _Footer(
+            counters: '$answering/${_peers.length} phones answering · '
+                'refreshed ${_clock(_refreshedAt)}',
+            status: _status,
+            corrections: _corrections,
+            onCorrections: (value) {
+              setState(() {
+                _corrections = value;
+                _applyCorrections();
+              });
+              unawaited(_saveConfig());
+            },
           ),
         ],
       ),
+    );
+  }
+
+  Widget _phonesPane() {
+    return Column(
+      children: [
+        _AddBar(
+          controller: _address,
+          error: _addError,
+          scanning: _scanning,
+          onAdd: _addFromField,
+          onScan: _scan,
+        ),
+        Expanded(
+          child: _peers.isEmpty
+              ? const _EmptyState()
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          for (final peer in _peers)
+                            SizedBox(
+                              width: _cardWidth(constraints.maxWidth),
+                              child: _PhoneCard(
+                                peer: peer,
+                                onRemove: () => _removePeer(peer),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sourcePane() {
+    return Column(
+      children: [
+        _SourceBar(
+          scenarioId: _scenarioId,
+          customSummary: _custom.summary,
+          running: _source.running,
+          uri: _source.uri,
+          lanUri: _source.lanUri,
+          failure: _source.failure,
+          onScenario: _selectScenario,
+          onEditCustom: _editSelectedCustom,
+          onToggle: _toggleSource,
+        ),
+        const Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Serve a reading',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'A phone watches this PC by typing the address above into '
+                  'Watch a phone. The port is fixed at 41729 — the same one the '
+                  'phone app shares on — so either end can find the other by a '
+                  'scan instead of being told an address.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                SizedBox(height: 14),
+                Text(
+                  'Custom source',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Every field of the reading by hand: the network, the LTE '
+                  'anchor, carriers aggregated under it, up to five NR legs and '
+                  'the neighbours a modem hears. The page reads back what it '
+                  'will actually serve.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -308,22 +431,17 @@ class _DesktopHomeState extends State<DesktopHome> {
     final width = (available - 24 - (columns - 1) * 12) / columns;
     return width < minimum ? available - 24 : width;
   }
+
+  static String _clock(DateTime when) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(when.hour)}:${two(when.minute)}:${two(when.second)}';
+  }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onAdd,
-    required this.onClear,
-    required this.onRefresh,
-    required this.onScan,
-    this.scanning = false,
-  });
+class _Header extends StatelessWidget {
+  const _Header({required this.status});
 
-  final VoidCallback onAdd;
-  final VoidCallback onClear;
-  final VoidCallback onRefresh;
-  final VoidCallback onScan;
-  final bool scanning;
+  final String status;
 
   @override
   Widget build(BuildContext context) {
@@ -345,42 +463,157 @@ class _TopBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           const Text(
-            'Desktop',
+            'Desktop console',
             style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
           const Spacer(),
-          TextButton.icon(
-            onPressed: scanning ? null : onScan,
-            icon: const Icon(Icons.wifi_find_rounded, size: 18),
-            label: Text(scanning ? 'Scanning…' : 'Scan'),
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.textMuted,
-              disabledForegroundColor: AppColors.textMuted,
+          Flexible(
+            child: Text(
+              status,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
             ),
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Refresh now',
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            color: AppColors.textMuted,
-          ),
-          IconButton(
-            tooltip: 'Stop watching every phone',
-            onPressed: onClear,
-            icon: const Icon(Icons.close_rounded, size: 18),
-            color: AppColors.textMuted,
-          ),
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Watch phone'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: AppColors.background,
+        ],
+      ),
+    );
+  }
+}
+
+class _Tabs extends StatelessWidget {
+  const _Tabs({required this.index, required this.onChanged});
+
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  static const List<String> _labels = ['Phones', 'Test source'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+      child: Row(
+        children: [
+          for (var tab = 0; tab < _labels.length; tab++)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Material(
+                color: tab == index ? AppColors.surface : AppColors.surfaceAlt,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(8),
+                ),
+                child: InkWell(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(8),
+                  ),
+                  onTap: () => onChanged(tab),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: Text(
+                      _labels[tab],
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: tab == index
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The console's add row: type an address, add it, or sweep for phones.
+class _AddBar extends StatelessWidget {
+  const _AddBar({
+    required this.controller,
+    required this.onAdd,
+    required this.onScan,
+    required this.scanning,
+    this.error,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onAdd;
+  final VoidCallback onScan;
+  final bool scanning;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('phone-address'),
+                  controller: controller,
+                  onSubmitted: (_) => onAdd(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'ip or ip:port',
+                    hintStyle: TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.textMuted,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 11,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: onAdd,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: AppColors.background,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('Add phone'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: scanning ? null : onScan,
+                icon: const Icon(Icons.wifi_find_rounded, size: 16),
+                label: Text(scanning ? 'Scanning…' : 'Scan'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textMuted,
+                  side: const BorderSide(color: AppColors.border),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
           ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                error!,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AppColors.warning,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -436,7 +669,10 @@ class _SourceBar extends StatelessWidget {
               isExpanded: true,
               dropdownColor: AppColors.surface,
               underline: const SizedBox.shrink(),
-              style: const TextStyle(fontSize: 12.5, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.textPrimary,
+              ),
               items: [
                 for (final scenario in Scenario.presets)
                   DropdownMenuItem(
@@ -479,7 +715,8 @@ class _SourceBar extends StatelessWidget {
             onPressed: onToggle,
             style: FilledButton.styleFrom(
               backgroundColor: running ? AppColors.surface : AppColors.accent,
-              foregroundColor: running ? AppColors.textPrimary : AppColors.background,
+              foregroundColor:
+                  running ? AppColors.textPrimary : AppColors.background,
               visualDensity: VisualDensity.compact,
             ),
             child: Text(running ? 'Stop' : 'Serve'),
@@ -501,6 +738,58 @@ class _SourceBar extends StatelessWidget {
                 color: running ? AppColors.accent : AppColors.textMuted,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer({
+    required this.counters,
+    required this.corrections,
+    required this.onCorrections,
+    this.status,
+  });
+
+  final String counters;
+  final bool corrections;
+  final ValueChanged<bool> onCorrections;
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              status == null ? counters : '$counters  ·  $status',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Checkbox(
+                value: corrections,
+                onChanged: (value) => onCorrections(value ?? true),
+                visualDensity: VisualDensity.compact,
+                side: const BorderSide(color: AppColors.textMuted),
+              ),
+              const Text(
+                'Display corrections',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+            ],
           ),
         ],
       ),
@@ -531,10 +820,14 @@ class _EmptyState extends StatelessWidget {
             ),
             SizedBox(height: 6),
             Text(
-              'Tap Scan to find phones sharing on this Wi-Fi, or Watch phone '
-              'to type the address one shows.',
+              'Type the address a phone shows above and press Add phone, or '
+              'Scan to find phones sharing on this Wi-Fi.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textMuted),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.4,
+                color: AppColors.textMuted,
+              ),
             ),
           ],
         ),
@@ -543,78 +836,24 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Asks for a peer's address.
-///
-/// It owns its controller: disposing one as soon as [showDialog] returns
-/// throws, because the dialog's exit animation still rebuilds the field.
-class _AddPhoneDialog extends StatefulWidget {
-  const _AddPhoneDialog();
-
-  @override
-  State<_AddPhoneDialog> createState() => _AddPhoneDialogState();
-}
-
-class _AddPhoneDialogState extends State<_AddPhoneDialog> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: const Text('Watch a phone'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Address of a phone with sharing turned on. A bare IP uses port '
-            '41729; 127.0.0.1 watches this PC.',
-            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-              hintText: '10.1.1.47',
-              hintStyle: TextStyle(color: AppColors.textMuted),
-            ),
-            onSubmitted: (value) => Navigator.of(context).pop(value),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: const Text('Watch'),
-        ),
-      ],
-    );
-  }
-}
-
+/// One phone, drawn the way the app draws a SIM: header, meter, rows.
 class _PhoneCard extends StatelessWidget {
-  const _PhoneCard({required this.peer});
+  const _PhoneCard({required this.peer, required this.onRemove});
 
   final _Peer peer;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final snapshot = peer.snapshot;
+    final name = snapshot != null && snapshot.deviceModel.isNotEmpty
+        ? snapshot.deviceModel
+        : peer.error != null
+            ? 'not answering'
+            : 'asking…';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
@@ -626,84 +865,92 @@ class _PhoneCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  peer.address,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      peer.address,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                peer.error != null
-                    ? 'not answering'
-                    : peer.lastOk == null
-                        ? 'asking…'
-                        : _age(peer.lastOk!),
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: peer.error != null ? AppColors.warning : AppColors.textMuted,
+              TextButton(
+                onPressed: onRemove,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textMuted,
+                  visualDensity: VisualDensity.compact,
                 ),
+                child: const Text('Remove'),
               ),
             ],
           ),
-          if (snapshot != null && snapshot.deviceModel.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                snapshot.deviceModel,
-                style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
-              ),
-            ),
           if (peer.error != null)
             Container(
               margin: const EdgeInsets.only(top: 10),
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
               decoration: const BoxDecoration(
                 color: AppColors.surfaceAlt,
-                border: Border(left: BorderSide(color: AppColors.warning, width: 2)),
+                border: Border(
+                  left: BorderSide(color: AppColors.warning, width: 2),
+                ),
               ),
               child: Text(
                 peer.error!,
-                style: const TextStyle(fontSize: 11.5, height: 1.4, color: AppColors.warning),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.4,
+                  color: AppColors.warning,
+                ),
               ),
             ),
           if (snapshot != null)
             for (final sim in snapshot.sims)
-              _SimBlock(sim: sim, showSlot: snapshot.sims.length > 1)
-          else if (peer.error == null)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: Text(
-                'asking…',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              _SimBlock(
+                sim: sim,
+                updated: peer.lastOk,
+                showSlot: snapshot.sims.length > 1,
               ),
-            ),
         ],
       ),
     );
   }
-
-  static String _age(DateTime when) {
-    final seconds = DateTime.now().difference(when).inSeconds;
-    if (seconds < 1) return 'now';
-    if (seconds < 90) return '${seconds}s ago';
-    return '${seconds ~/ 60}m ago';
-  }
 }
 
 class _SimBlock extends StatelessWidget {
-  const _SimBlock({required this.sim, required this.showSlot});
+  const _SimBlock({
+    required this.sim,
+    required this.showSlot,
+    this.updated,
+  });
 
   final SimReading sim;
   final bool showSlot;
+  final DateTime? updated;
 
   @override
   Widget build(BuildContext context) {
-    final anchor = sim.lteServing ?? sim.serving;
-    final leg = sim.nrServing;
-    final serving = leg ?? anchor;
+    final lte = sim.lteServing;
+    final nr = sim.nrServing;
+    final paired = sim.isNsa && lte != null && nr != null;
+    final serving = nr ?? lte;
+    final badge = badgeForSim(sim);
+    final cells = sim.cells;
+    final neighbours = sim.neighbours;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,95 +958,285 @@ class _SimBlock extends StatelessWidget {
         const SizedBox(height: 14),
         Row(
           children: [
-            Expanded(
-              child: Text(
-                '${showSlot ? 'SIM ${sim.slotIndex + 1}  ' : ''}'
-                '${ServingView.carrierName(sim)}',
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
+            Text(
+              ServingView.carrierName(sim),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
               ),
             ),
-            TechBadge(label: _badge(sim)),
+            if (badge != null) ...[
+              const SizedBox(width: 7),
+              TechBadge(label: badge),
+            ],
+            if (showSlot) ...[
+              const SizedBox(width: 7),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text(
+                  'SIM ${sim.slotIndex + 1}',
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ),
+            ],
+            const Spacer(),
+            const Text(
+              'SERVING CELL',
+              style: TextStyle(
+                fontSize: 9.5,
+                letterSpacing: 0.8,
+                color: AppColors.textMuted,
+              ),
+            ),
           ],
         ),
-        if (serving != null) ...[
-          const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        if (paired)
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SignalBars(bars: serving.bars, height: 26, barWidth: 6, gap: 4),
-              const SizedBox(width: 10),
+              Expanded(child: _Meter(cell: lte, label: 'LTE anchor')),
+              Container(
+                width: 1,
+                height: 56,
+                color: AppColors.border,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              Expanded(child: _Meter(cell: nr, label: '5G NR')),
+            ],
+          )
+        else
+          _Meter(cell: serving),
+        const SizedBox(height: 12),
+        Container(height: 1, color: AppColors.border),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
               Text(
-                serving.dbm == null ? '—' : '${serving.dbm} dBm',
+                'Updated ${_clock(updated)}',
                 style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.accent,
+                  fontSize: 10.5,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${cells.length} cell${cells.length == 1 ? '' : 's'} visible',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  color: AppColors.textMuted,
                 ),
               ),
             ],
           ),
-        ],
-        if (anchor != null) _CellRows(cell: anchor, name: 'LTE'),
-        if (leg != null) _CellRows(cell: leg, name: '5G NR'),
-        if (anchor == null && leg == null)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'no cells reported',
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+        ),
+        if (serving != null) ...[
+          if (paired) ...[
+            const _SectionHeading('4G anchor'),
+            _DetailCard(rows: ServingView.entries(lte)),
+            const _SectionHeading('5G NR secondary'),
+            _DetailCard(
+              rows: ServingView.entries(
+                nr,
+                gnbEstimate: sim.nsaGnbEstimate,
+              ),
             ),
+          ] else ...[
+            _SectionHeading(lte == null ? '5G NR' : 'Serving cell'),
+            _DetailCard(rows: ServingView.entries(serving)),
+          ],
+          for (final secondary in sim.lteSecondaries) ...[
+            const _SectionHeading('4G LTE secondary'),
+            _DetailCard(
+              rows: ServingView.entries(
+                secondary,
+                fallbackPlmn: lte?.plmn ?? nr?.plmn,
+              ),
+            ),
+          ],
+          const _SectionHeading('Radio quality'),
+          _DetailCard(rows: ServingView.qualityEntries(sim)),
+        ],
+        if (cells.isNotEmpty) ...[
+          _SectionHeading(
+            neighbours.isEmpty
+                ? 'Neighbour cells'
+                : 'Neighbour cells (${neighbours.length})',
           ),
+          _NeighbourCard(cells: neighbours),
+        ],
       ],
     );
   }
 
-  static String _badge(SimReading sim) {
-    if (sim.nrServing != null) return sim.lteServing != null ? '5G NSA' : '5G SA';
-    return 'LTE';
+  static String _clock(DateTime? when) {
+    if (when == null) return '—';
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${two(when.hour)}:${two(when.minute)}:${two(when.second)}';
   }
 }
 
-class _CellRows extends StatelessWidget {
-  const _CellRows({required this.cell, required this.name});
+/// One leg's meter: bars, the level, and the word under it.
+class _Meter extends StatelessWidget {
+  const _Meter({required this.cell, this.label});
 
-  final CellTower cell;
-  final String name;
+  final CellTower? cell;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
-    final rows = ServingView.entries(cell);
+    final dbm = cell?.dbm;
+    final bars = cell?.bars ?? 0;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (label != null) ...[
           Text(
-            '$name · ${cell.tech.label}',
+            label!.toUpperCase(),
             style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              fontSize: 9,
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textMuted,
             ),
           ),
-          for (final row in rows)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
+          const SizedBox(height: 6),
+        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            SignalBars(
+              bars: bars,
+              height: label == null ? 40 : 30,
+              barWidth: label == null ? 8 : 6,
+              gap: 4,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      dbm?.toString() ?? '—',
+                      style: TextStyle(
+                        fontSize: label == null ? 26 : 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'dBm',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  SignalQuality.label(bars),
+                  style: TextStyle(
+                    fontSize: label == null ? 11.5 : 10.5,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 9.5,
+          letterSpacing: 0.9,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+/// A bordered block of label/value rows, the way the console drew its cards.
+class _DetailCard extends StatelessWidget {
+  const _DetailCard({required this.rows});
+
+  final List<MapEntry<String, String>> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Text(
+                'nothing reported',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+            ),
+          for (var index = 0; index < rows.length; index++)
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+              decoration: index == 0
+                  ? null
+                  : const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: AppColors.border),
+                      ),
+                    ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 92,
-                    child: Text(
-                      row.key,
-                      style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                  Text(
+                    rows[index].key,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textMuted,
                     ),
                   ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      row.value,
+                      rows[index].value,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11.5,
                         color: AppColors.textPrimary,
@@ -812,6 +1249,79 @@ class _CellRows extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Cells heard but not serving: a band and a PCI, and the frequency line.
+class _NeighbourCard extends StatelessWidget {
+  const _NeighbourCard({required this.cells});
+
+  final List<CellTower> cells;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          if (cells.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Text(
+                'none heard',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+            ),
+          for (var index = 0; index < cells.length; index++)
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+              decoration: index == 0
+                  ? null
+                  : const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: AppColors.border),
+                      ),
+                    ),
+              child: Row(
+                children: [
+                  Text(
+                    _label(cells[index]),
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      ServingView.neighbourFrequency(cells[index]) ?? '—',
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _label(CellTower cell) {
+    final parts = <String>[
+      if (cell.bandLabel != null) cell.bandLabel!,
+      if (cell.pci != null) 'PCI ${cell.pci}',
+    ];
+    return parts.isEmpty ? 'unknown cell' : parts.join(' · ');
   }
 }
 

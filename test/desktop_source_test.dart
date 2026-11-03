@@ -395,6 +395,7 @@ void main() {
       final saved = DesktopConfig(
         phones: ['10.1.1.47:41729'],
         scenarioId: 'custom',
+        corrections: false,
         custom: const CustomSource(
           mcc: '001',
           mnc: '01',
@@ -416,6 +417,33 @@ void main() {
       expect(loaded.custom.lteLayers.single.band, 29);
       expect(loaded.custom.neighbours.count, 2);
       expect(loaded.custom.override, 'LTE_CA');
+      expect(loaded.corrections, isFalse);
+    });
+
+    test('reads the phone objects and scenario name the console wrote', () async {
+      final directory = await Directory.systemTemp.createTemp('sector-scout-console');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}desktop.json');
+
+      await file.writeAsString(jsonEncode({
+        'port': 41729,
+        'scenario': 'T-Mobile n41 SA',
+        'corrections': false,
+        'phones': [
+          {
+            'url': 'http://10.1.1.47:41729',
+            'name': 'samsung SM-S931U',
+            'transport': 'wifi',
+            'address': '',
+          },
+        ],
+      }));
+
+      final loaded = DesktopConfig.load(file);
+      expect(loaded.phones, ['http://10.1.1.47:41729']);
+      expect(loaded.corrections, isFalse);
+      // A name this build does not know is kept, and matched to its preset.
+      expect(loaded.scenarioId, 'T-Mobile n41 SA');
     });
   });
 

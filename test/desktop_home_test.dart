@@ -5,33 +5,49 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('the desktop window starts empty and offers to watch a phone',
+  testWidgets('the console opens on the phones tab with an add row',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(home: DesktopHome(config: DesktopConfig())));
 
     expect(find.text('Sector Scout'), findsOneWidget);
-    expect(find.text('Desktop'), findsOneWidget);
-    expect(find.text('No phones yet'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Watch phone'), findsOneWidget);
+    expect(find.text('Desktop console'), findsOneWidget);
+    expect(find.text('Phones'), findsOneWidget);
+    // Two: the tab, and the bar's own label inside the tab.
+    expect(find.text('Test source'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Add phone'), findsOneWidget);
     expect(find.text('Scan'), findsOneWidget);
-    expect(find.byIcon(Icons.cell_tower_rounded), findsOneWidget);
+    expect(find.text('No phones yet'), findsOneWidget);
+    expect(find.textContaining('0/0 phones answering'), findsOneWidget);
+    expect(find.text('Display corrections'), findsOneWidget);
 
     // Stops the poll timer so the test leaves nothing pending.
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('watching a phone asks for its address', (WidgetTester tester) async {
+  testWidgets('an address typed into the bar is watched', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(home: DesktopHome(config: DesktopConfig())));
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Watch phone'));
-    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('phone-address')), '10.1.1.47');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add phone'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 20));
 
-    expect(find.text('Watch a phone'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
-    expect(find.textContaining('A bare IP uses port 41729'), findsOneWidget);
+    expect(find.text('10.1.1.47'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Remove'), findsOneWidget);
+    expect(find.textContaining('0/1 phones answering'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('an empty address is refused rather than added',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: DesktopHome(config: DesktopConfig())));
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Add phone'));
+    await tester.pump();
+
+    expect(find.text('Enter a phone address first.'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -82,6 +98,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: DesktopHome(config: DesktopConfig(scenarioId: 'custom')),
     ));
+
+    await tester.tap(find.text('Test source').first);
+    await tester.pump();
 
     expect(find.textContaining('Custom · B30 anchor + n5'), findsOneWidget);
 
