@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The update APK lives in the app's own files area; files-path exposes the
+     whole root, which the FileProvider turns into a content:// URI the
+     package installer is allowed to read. -->
+<paths>
+    <files-path name="updates" path="." />
+</paths>

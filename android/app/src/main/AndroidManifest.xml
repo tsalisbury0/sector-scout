@@ -24,6 +24,9 @@
     <!-- Battery-optimisation exemption: without it Android freezes the app in
          the background and the pinned notification stops updating. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- In-app updates: the downloaded APK is installed with the package
+         installer, which Android only allows once this is held. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Bluetooth sharing: one phone advertises the reading, the other reads
          it. Pre-12 releases gate BLE behind the normal Bluetooth permissions;
@@ -84,6 +87,18 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the current cell and signal level visible in a pinned notification" />
         </service>
+        <!-- In-app updates: the downloaded APK is handed to the package
+             installer through this provider, so the installer can read a file
+             the app's own storage otherwise keeps private. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/band_filters.dart';
 import '../services/app_settings.dart';
 import '../services/signal_notification.dart';
+import '../services/update_checker.dart';
 import '../theme/app_colors.dart';
 
 /// The switches that change how the app reads a cell, and the ones that keep a
@@ -185,6 +188,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (!_notification.isSupported)
             const _FootNote('The pinned notification is Android only.'),
+          const SizedBox(height: 20),
+          const _SectionLabel('Updates'),
+          _SettingsCard(
+            children: [
+              ListenableBuilder(
+                listenable: UpdateChecker.betas,
+                builder: (context, _) => _SettingsSwitch(
+                  title: 'Include beta releases',
+                  subtitle: 'Offer non-stable releases too, like v1.0.2-beta — '
+                      'worth it while a fix is still being tested.',
+                  value: UpdateChecker.betas.value,
+                  onChanged: (value) =>
+                      unawaited(UpdateChecker.setBetas(value)),
+                ),
+              ),
+              const _CardDivider(),
+              ListenableBuilder(
+                listenable: UpdateChecker.update,
+                builder: (context, _) {
+                  final phase = UpdateChecker.update.value;
+                  final subtitle = switch (phase) {
+                    UpdateChecking() => 'Checking GitHub…',
+                    UpdateAvailable(:final info) =>
+                      '${info.versionText} (${info.tag}) is out.',
+                    UpdateDownloading(:final info) =>
+                      'Downloading ${info.versionText}…',
+                    UpdateReady(:final info) =>
+                      '${info.versionText} is downloaded and ready.',
+                    UpdateFailed(:final message) => message,
+                    null => 'Up to date, or GitHub just answered that way.',
+                  };
+                  return _SettingsAction(
+                    title: 'This build: $kBuildTag',
+                    subtitle: subtitle,
+                    action: phase is UpdateAvailable
+                        ? 'Skip this version'
+                        : 'Check now',
+                    onPressed: phase is UpdateAvailable
+                        ? () => unawaited(UpdateChecker.skip())
+                        : () => unawaited(UpdateChecker.refresh()),
+                  );
+                },
+              ),
+            ],
+          ),
+          const _FootNote(
+            'The check reads the releases list on GitHub once per launch, or '
+            'when you tap Check now. An APK downloads inside the app and '
+            'Android asks before installing; the Windows app opens the '
+            'release page, whose zip replaces the app folder.',
+          ),
         ],
       ),
     );
@@ -295,6 +349,67 @@ class _SettingsSwitch extends StatelessWidget {
             value: value,
             activeTrackColor: AppColors.accent,
             onChanged: enabled ? onChanged : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A settings row whose trailing side is a text button, for the update
+/// section's check and skip actions.
+class _SettingsAction extends StatelessWidget {
+  const _SettingsAction({
+    required this.title,
+    required this.subtitle,
+    required this.action,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String subtitle;
+  final String action;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    height: 1.35,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: onPressed,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(action),
           ),
         ],
       ),

@@ -40,6 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -3972,6 +3973,96 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
+APP_VERSION = "1.0.2"
+RELEASES_URL = (
+    "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
+)
+
+
+def _updates_pref() -> Path:
+    """Where the console remembers skipped versions, outside the repo."""
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    return Path(base) / "SectorScout" / "updates.json"
+
+
+def _start_update_check(app) -> None:
+    """Check GitHub for a newer console release, stably and off the UI thread.
+
+    Prereleases are skipped: betas live on the phone app's own release channel.
+    A newer stable asks once, with Skip this version remembered across runs.
+    """
+
+    def worker() -> None:
+        try:
+            request = urllib.request.Request(
+                RELEASES_URL,
+                headers={
+                    "User-Agent": "sector-scout-console-update",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            releases = json.loads(urllib.request.urlopen(request, timeout=15))
+            skip = ""
+            try:
+                stored = json.loads(_updates_pref().read_text(encoding="utf-8"))
+                skip = stored.get("skip", "")
+            except (OSError, ValueError):
+                pass
+            best = None
+            for release in releases:
+                if release.get("draft") or release.get("prerelease"):
+                    continue
+                tag = release.get("tag_name") or ""
+                numbers = tuple(
+                    part for part in tag.lstrip("v").split("-")[0].split(".")
+                    if part.isdigit()
+                )
+                if not numbers or tag == f"v{APP_VERSION}" or tag == skip:
+                    continue
+                if best is None or numbers > best[0]:
+                    best = (numbers, tag, release.get("html_url", ""))
+
+            def ask() -> None:
+                if best is None:
+                    return
+                _tag, tag_name, page = best
+                answer = messagebox.askyesno(
+                    "Sector Scout update",
+                    f"{tag_name} is available (this console: v{APP_VERSION}).\n\n"
+                    "Open the release page to download it?",
+                )
+                if answer and page:
+                    import webbrowser
+
+                    webbrowser.open(page)
+                    pref = _updates_pref()
+                    try:
+                        json.dump(
+                            {"version": APP_VERSION},
+                            pref.open("w", encoding="utf-8"),
+                        )
+                    except OSError:
+                        pass
+                elif answer is False and page:
+                    pref = _updates_pref()
+                    try:
+                        pref.parent.mkdir(parents=True, exist_ok=True)
+                        json.dump(
+                            {"version": APP_VERSION, "skip": tag_name},
+                            pref.open("w", encoding="utf-8"),
+                        )
+                    except OSError:
+                        pass
+
+            app.after(0, ask)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            # Offline, rate-capped, or an odd answer: a failed check is
+            # silent, and the next launch asks again.
+            return
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def local_ip() -> str:
     """Best guess at this PC's LAN address, for the URL a phone should use."""
     try:
@@ -3998,6 +4089,7 @@ def _enable_dpi_awareness() -> None:
 def main() -> int:
     _enable_dpi_awareness()
     app = DesktopApp(DEFAULT_PORT)
+    _start_update_check(app)
     app.mainloop()
     return 0
 

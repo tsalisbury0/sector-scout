@@ -65,6 +65,10 @@ kotlin {
 }
 
 dependencies {
+    // FileProvider: the in-app updater hands the downloaded APK to the package
+    // installer through a content:// URI, which only a provider can open.
+    implementation("androidx.core:core:1.13.1")
+
     // JVM unit tests for ServingMerge: the cell-pairing and held-channel rules
     // run without the framework, so they are tested off-device.
     testImplementation("junit:junit:4.13.2")

@@ -1,6 +1,7 @@
 package com.celltower.cell_tower_monitor
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -140,6 +141,36 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
 
+                // Applied updates: the Dart updater hands the APK it
+                // downloaded to the package installer. A user who has not
+                // granted "install unknown apps" is shown that screen first.
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.success(false)
+                    } else {
+                        result.success(
+                            try {
+                                startApkInstall(applicationContext, path)
+                                true
+                            } catch (error: Exception) {
+                                Log.w(TAG, "APK install failed: ${error.message}")
+                                false
+                            },
+                        )
+                    }
+                }
+                "appVersion" -> result.success(
+                    try {
+                        applicationContext.packageManager
+                            .getPackageInfo(applicationContext.packageName, 0)
+                            .versionName
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Version read failed: ${error.message}")
+                        null
+                    },
+                )
+
                 // Android can freeze a backgrounded app (Doze and OEM battery
                 // managers), which is what makes the pinned notification go
                 // stale. Exempting the app is the only supported fix.
@@ -186,6 +217,40 @@ class MainActivity : FlutterActivity() {
             }
             main.post { result.success(value) }
         }.apply { isDaemon = true }.start()
+    }
+
+    /**
+     * Opens the downloaded update APK in the package installer. Android only
+     * allows installs from outside a store once the user has granted "install
+     * unknown apps", which is asked for first.
+     */
+    private fun startApkInstall(context: Context, path: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+            return
+        }
+        val uri = FileProvider.getUriForFile(
+            context,
+            "$packageName.fileprovider",
+            java.io.File(path),
+        )
+        startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_NEW_TASK,
+                )
+            },
+        )
+
     }
 
     private fun isBatteryExempt(): Boolean {

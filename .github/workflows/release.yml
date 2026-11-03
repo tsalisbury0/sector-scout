@@ -168,6 +168,10 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          # A tag like v1.0.2-beta publishes as a prerelease; stable tags stay
+          # regular releases. This is what keeps beta builds off the phone
+          # app's update check unless the beta switch is on.
+          prerelease: ${{ contains(github.ref_name, '-beta') }}
           body: |
             The Windows app, the Python console and the phone app are three
             separate downloads above.

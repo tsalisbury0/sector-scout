@@ -12,6 +12,7 @@ import '../services/ble_desktop.dart';
 import '../services/lan_discovery.dart';
 import '../services/remote_client.dart';
 import '../services/serving_view.dart';
+import '../services/update_checker.dart';
 import '../theme/app_colors.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/tech_badge.dart';
@@ -393,6 +394,7 @@ class _DesktopHomeState extends State<DesktopHome> {
               if (value == 1 && !_source.running) unawaited(_startSource());
             },
           ),
+          _UpdateBanner(),
           Expanded(
             child: IndexedStack(
               index: _tab,
@@ -411,6 +413,9 @@ class _DesktopHomeState extends State<DesktopHome> {
               });
               unawaited(_saveConfig());
             },
+            betas: UpdateChecker.betas,
+            onBetas: (value) => unawaited(UpdateChecker.setBetas(value)),
+            onCheck: () => unawaited(UpdateChecker.refresh()),
           ),
         ],
       ),
@@ -885,6 +890,9 @@ class _Footer extends StatelessWidget {
     required this.counters,
     required this.corrections,
     required this.onCorrections,
+    required this.betas,
+    required this.onBetas,
+    required this.onCheck,
     this.status,
   });
 
@@ -893,8 +901,27 @@ class _Footer extends StatelessWidget {
   final ValueChanged<bool> onCorrections;
   final String? status;
 
+  /// Whether prerelease updates should be offered, shown as a checkbox here
+  /// and in the phone's Settings page.
+  final ValueListenable<bool> betas;
+  final ValueChanged<bool> onBetas;
+  final VoidCallback onCheck;
+
   @override
   Widget build(BuildContext context) {
+    final checking = ListenableBuilder(
+      listenable: UpdateChecker.update,
+      builder: (context, _) {
+        final phase = UpdateChecker.update.value;
+        return phase is UpdateChecking
+            ? const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const SizedBox(width: 12, height: 12);
+      },
+    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
@@ -922,6 +949,35 @@ class _Footer extends StatelessWidget {
               ),
               const Text(
                 'Display corrections',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: 'Check for updates',
+                child: IconButton(
+                  onPressed: onCheck,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  color: AppColors.textMuted,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              checking,
+              const SizedBox(width: 4),
+              const Text(
+                kBuildTag,
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+              ),
+              ListenableBuilder(
+                listenable: betas,
+                builder: (context, _) => Checkbox(
+                  value: betas.value,
+                  onChanged: (value) => onBetas(value ?? false),
+                  visualDensity: VisualDensity.compact,
+                  side: const BorderSide(color: AppColors.textMuted),
+                ),
+              ),
+              const Text(
+                'Betas',
                 style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
               ),
             ],
@@ -1569,6 +1625,131 @@ class _Peer {
       scheme: parsed.scheme.isEmpty ? 'http' : parsed.scheme,
       host: parsed.host,
       port: parsed.hasPort ? parsed.port : 41729,
+    );
+  }
+}
+
+/// The update banner that sits between the tabs and the phone list whenever
+/// the checker has something to say: an offer, a download, a ready APK or a
+/// failure. Quiet when there is nothing to offer.
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<UpdatePhase?>(
+      valueListenable: UpdateChecker.update,
+      builder: (context, phase, _) {
+        if (phase == null || phase is UpdateChecking) {
+          return const SizedBox.shrink();
+        }
+        final windows = Platform.isWindows;
+        late final String title;
+        late final String subtitle;
+        var progress = 0.0;
+        var action = '';
+        switch (phase) {
+          case final UpdateAvailable offer:
+            title = 'Update available: ${offer.info.versionText}';
+            subtitle = windows
+                ? 'Unzip the new folder beside this one and swap them in — '
+                    'a running exe cannot replace itself.'
+                : 'The APK downloads and Android offers the install.';
+            action = windows ? 'Open release page' : 'Download update';
+          case final UpdateDownloading download:
+            title = 'Downloading ${download.info.versionText}';
+            subtitle = '${download.percent}% · the install screen comes up '
+                'when the APK is in';
+            progress = download.percent / 100;
+          case final UpdateReady ready:
+            title = '${ready.info.versionText} is downloaded';
+            subtitle = 'Tap install and Android takes it from there.';
+            action = 'Install update';
+          case final UpdateFailed failed:
+            title = 'Update check failed';
+            subtitle = failed.message;
+            action = 'Try again';
+          case UpdateChecking():
+            break;
+        }
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(bottom: BorderSide(color: AppColors.border)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.system_update_alt_rounded,
+                size: 18,
+                color: AppColors.accent,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    if (phase is UpdateDownloading)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          backgroundColor: AppColors.border,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (action.isNotEmpty)
+                FilledButton(
+                  onPressed: () {
+                    if (phase is UpdateAvailable) {
+                      unawaited(UpdateChecker.install(phase.info));
+                    } else if (phase is UpdateReady && !windows) {
+                      unawaited(UpdateChecker.installApk(phase.apkPath));
+                    } else if (phase is UpdateFailed) {
+                      unawaited(UpdateChecker.refresh());
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: AppColors.background,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Text(action),
+                ),
+              const SizedBox(width: 6),
+              if (phase is UpdateAvailable)
+                TextButton(
+                  onPressed: () => unawaited(UpdateChecker.skip()),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textMuted,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Skip this version'),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

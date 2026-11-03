@@ -8,6 +8,7 @@ import 'screens/desktop_home.dart';
 import 'screens/home_screen.dart';
 import 'services/app_settings.dart';
 import 'services/carrier_names.dart';
+import 'services/update_checker.dart';
 import 'theme/app_colors.dart';
 
 bool get _isDesktop =>
@@ -48,6 +49,9 @@ Future<void> main() async {
     // the payload carried.
     unawaited(CarrierNames.load().catchError((_) => false));
   }
+  // What is out on GitHub, checked on the way in so the banner is settled
+  // before the window is really on screen. Failures park on the banner.
+  unawaited(UpdateChecker.start());
   runApp(const CellTowerApp());
 }
 
