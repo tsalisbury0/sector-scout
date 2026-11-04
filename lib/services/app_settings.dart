@@ -10,6 +10,13 @@ import '../models/band_filters.dart';
 class AppSettings {
   static const MethodChannel _method = MethodChannel('cell_tower/monitor');
 
+  ///
+  /// Whether the Shizuku reader runs at all.
+  ///
+  /// On unless it was switched off: it is what the carrier rows exist for, and
+  /// it does nothing on a phone without Shizuku.
+  static bool carrierDetail = true;
+
   /// Reads the stored switches into [BandFilters], before the first frame.
   static Future<void> load() async {
     try {
@@ -23,6 +30,7 @@ class AppSettings {
       // Off unless it was switched on: the alias is opt-in, so a phone that
       // installs this build fresh keeps the 3GPP numbering.
       BandFilters.anterixB106 = raw['anterixB106'] == true;
+      AppSettings.carrierDetail = raw['carrierDetail'] != false;
     } on PlatformException {
       // Nothing stored yet; the defaults stand.
     } on MissingPluginException {
@@ -43,6 +51,13 @@ class AppSettings {
   static Future<void> setAnterixB106(bool value) async {
     BandFilters.anterixB106 = value;
     await _store('anterixB106', value);
+  }
+
+  /// Stops or starts the Shizuku reader. The native side is told separately:
+  /// this only records the choice, and the reader is what acts on it.
+  static Future<void> setCarrierDetail(bool value) async {
+    carrierDetail = value;
+    await _store('carrierDetail', value);
   }
 
   static Future<void> _store(String key, bool value) async {

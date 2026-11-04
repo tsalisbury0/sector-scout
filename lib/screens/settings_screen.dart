@@ -101,6 +101,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => _carrierStatus = status);
   }
 
+  /// Turns the reader on or off. The stored flag outlives the session, so the
+  /// pinned service builds the same snapshot after a restart.
+  Future<void> _setCarrierDetail(bool on) async {
+    await AppSettings.setCarrierDetail(on);
+    final status = await _carrierDetail.setEnabled(on);
+    if (mounted) setState(() => _carrierStatus = status);
+  }
+
   Future<bool> _confirmNorthAmerica() async {
     final answer = await showDialog<bool>(
       context: context,
@@ -230,6 +238,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _SettingsCard(
             children: [
+              _SettingsSwitch(
+                title: 'Read through Shizuku',
+                subtitle:
+                    'Off stops the shell-identity service entirely: no carrier '
+                    'widths, no aggregation card, and nothing running with adb '
+                    'privileges. The rest of the app is unchanged.',
+                value: AppSettings.carrierDetail,
+                onChanged: (value) => unawaited(_setCarrierDetail(value)),
+              ),
+              const _CardDivider(),
               _SettingsAction(
                 title: 'Aggregated carriers and bandwidth',
                 subtitle: _carrierStatus?.label ?? 'Checking…',

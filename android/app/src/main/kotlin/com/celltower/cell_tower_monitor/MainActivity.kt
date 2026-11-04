@@ -28,7 +28,13 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         // Carrier detail is optional: this only wires Shizuku's listeners, and
-        // does nothing when Shizuku is absent.
+        // does nothing when Shizuku is absent — or when the reader was switched
+        // off in Settings, which is remembered natively so the pinned service
+        // builds the same snapshot with no Flutter engine.
+        PrivilegedRadio.setEnabled(
+            applicationContext,
+            AppSettings.carrierDetail(applicationContext),
+        )
         PrivilegedRadio.attach(applicationContext)
 
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
@@ -189,6 +195,17 @@ class MainActivity : FlutterActivity() {
                 )
                 "carrierDetailRequest" -> {
                     PrivilegedRadio.requestPermission(applicationContext)
+                    result.success(PrivilegedRadio.status(applicationContext))
+                }
+                // The Settings switch that stops the reader altogether.
+                "carrierDetailSetEnabled" -> {
+                    val on = call.argument<Boolean>("enabled") == true
+                    AppSettings.set(
+                        applicationContext,
+                        AppSettings.KEY_CARRIER_DETAIL,
+                        on,
+                    )
+                    PrivilegedRadio.setEnabled(applicationContext, on)
                     result.success(PrivilegedRadio.status(applicationContext))
                 }
                 // Opening Shizuku is how a user starts it over wireless

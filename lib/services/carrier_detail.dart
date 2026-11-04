@@ -12,6 +12,7 @@ enum CarrierDetailState {
   noPermission,
   starting,
   ready,
+  disabled,
   unknown,
 }
 
@@ -54,6 +55,9 @@ class CarrierDetailStatus {
           'from a computer, or from Android 11’s wireless debugging.',
     CarrierDetailState.unsupported =>
       'This Shizuku is older than v11, which is where the reader lives.',
+    CarrierDetailState.disabled =>
+      'Switched off. No shell-identity service runs, and the app reads only '
+          'what the public APIs expose.',
     CarrierDetailState.unknown => error ?? 'Carrier detail is unavailable.',
   };
 
@@ -73,6 +77,7 @@ class CarrierDetailStatus {
     'no_permission' => CarrierDetailState.noPermission,
     'starting' => CarrierDetailState.starting,
     'ready' => CarrierDetailState.ready,
+    'disabled' => CarrierDetailState.disabled,
     _ => CarrierDetailState.unknown,
   };
 }
@@ -110,6 +115,24 @@ class CarrierDetailService {
     try {
       final map = await _method.invokeMethod<Map<Object?, Object?>>(
         'carrierDetailRequest',
+      );
+      return CarrierDetailStatus.fromMap(map ?? const {});
+    } on PlatformException {
+      return const CarrierDetailStatus(state: CarrierDetailState.unknown);
+    } on MissingPluginException {
+      return const CarrierDetailStatus(
+        state: CarrierDetailState.unknown,
+        error: 'This build has no native bridge.',
+      );
+    }
+  }
+
+  /// Switches the reader on or off, and answers with the state it settled in.
+  Future<CarrierDetailStatus> setEnabled(bool on) async {
+    try {
+      final map = await _method.invokeMethod<Map<Object?, Object?>>(
+        'carrierDetailSetEnabled',
+        {'enabled': on},
       );
       return CarrierDetailStatus.fromMap(map ?? const {});
     } on PlatformException {

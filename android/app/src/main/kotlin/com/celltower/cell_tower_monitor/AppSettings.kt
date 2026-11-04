@@ -19,6 +19,7 @@ object AppSettings {
     const val KEY_TMOBILE = "tmobileBands"
     const val KEY_CBRS = "cbrs"
     const val KEY_B106 = "anterixB106"
+    const val KEY_CARRIER_DETAIL = "carrierDetail"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -35,11 +36,22 @@ object AppSettings {
     fun anterixB106(context: Context): Boolean =
         prefs(context).getBoolean(KEY_B106, false)
 
+    /**
+     * Whether the Shizuku reader may run, **on** unless switched off.
+     *
+     * It does nothing on a phone without Shizuku and everything it adds is
+     * optional, so a fresh install keeps it on; the switch exists for anyone
+     * who does not want a shell-identity service running at all.
+     */
+    fun carrierDetail(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CARRIER_DETAIL, true)
+
     /** Every switch, in the shape the method channel returns. */
     fun all(context: Context): Map<String, Any> = mapOf(
         KEY_TMOBILE to tmobileBands(context),
         KEY_CBRS to cbrs(context),
         KEY_B106 to anterixB106(context),
+        KEY_CARRIER_DETAIL to carrierDetail(context),
     )
 
     /**

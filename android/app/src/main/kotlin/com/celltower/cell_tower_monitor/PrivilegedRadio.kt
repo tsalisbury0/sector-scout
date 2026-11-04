@@ -38,6 +38,16 @@ object PrivilegedRadio {
     private var binding = false
     private var attached = false
 
+    /**
+     * Whether the reader may run at all, from the Settings switch.
+     *
+     * Off means nothing is bound and nothing is read, so a snapshot looks
+     * exactly like one from a phone without Shizuku: no carriers, no widths,
+     * no aggregation card.
+     */
+    @Volatile
+    private var enabled = true
+
     private val worker = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "privileged-radio").apply { isDaemon = true }
     }
@@ -93,7 +103,7 @@ object PrivilegedRadio {
             Shizuku.addBinderReceivedListenerSticky(onBinderReceived)
             Shizuku.addBinderDeadListener(onBinderDead)
             Shizuku.addRequestPermissionResultListener(onPermissionResult)
-            if (permitted()) bind()
+            if (enabled && permitted()) bind()
         } catch (error: Throwable) {
             // Older Shizuku, or a device where the provider never ran.
             Log.w(TAG, "Shizuku listeners unavailable: ${error.message}")
@@ -103,12 +113,39 @@ object PrivilegedRadio {
     /** The state the Settings page shows, plus the reply to a grant request. */
     fun status(context: Context): Map<String, Any?> {
         attach(context)
-        val state = state(context)
+        val state = if (enabled) state(context) else "disabled"
         return linkedMapOf(
             "state" to state,
             "uid" to uid(),
             "error" to lastError,
         )
+    }
+
+    /**
+     * Turns the reader on or off, from the Settings switch.
+     *
+     * Off ends the shell-identity process outright rather than only dropping
+     * the handle: a bound service keeps running, and the point of the switch is
+     * that it does not.
+     */
+    fun setEnabled(context: Context, on: Boolean) {
+        if (enabled == on) return
+        enabled = on
+        if (on) {
+            attach(context)
+            if (permitted()) bind()
+            Log.i(TAG, "carrier reader enabled")
+            return
+        }
+        try {
+            service?.destroy()
+        } catch (error: Throwable) {
+            Log.d(TAG, "destroy on disable: ${error.message}")
+        }
+        service = null
+        binding = false
+        cache.clear()
+        Log.i(TAG, "carrier reader disabled")
     }
 
     private var lastError: String? = null
@@ -160,6 +197,7 @@ object PrivilegedRadio {
      * Never blocks and never throws: an absent service simply answers empty.
      */
     fun detail(subId: Int): CarrierDetail {
+        if (!enabled) return CarrierDetail.EMPTY
         val key = if (subId > 0) subId else -1
         val hit = cache[key]
         val now = System.currentTimeMillis()
@@ -168,6 +206,7 @@ object PrivilegedRadio {
     }
 
     private fun refresh(subId: Int) {
+        if (!enabled) return
         val bound = service ?: return
         synchronized(inFlight) {
             if (!inFlight.add(subId)) return
@@ -207,6 +246,7 @@ object PrivilegedRadio {
 
     private fun bind() {
         val context = appContext ?: return
+        if (!enabled) return
         if (binding || service != null) return
         binding = true
         try {

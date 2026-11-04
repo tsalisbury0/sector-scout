@@ -945,16 +945,34 @@ class SimReading {
 
   /// Cells heard but not serving.
   ///
-  /// The carriers [lteSecondaries] claims are left out — the ones the phone is
-  /// aggregating are not neighbours — while the other B29 cells on the same
-  /// channel stay here, because that is what they are: candidates heard, not
-  /// carriers in use.
+  /// Everything the aggregation card already accounts for is left out: the
+  /// carriers [lteSecondaries] claims, and any cell the privileged reader named
+  /// as a component carrier by PCI. A B29 layer the radio is using is not a
+  /// neighbour, even though it is unregistered and would otherwise be listed.
   List<CellTower> get neighbours {
     final secondaries = lteSecondaries;
     return cells
-        .where((cell) =>
-            !cell.registered && !secondaries.contains(cell))
+        .where(
+          (cell) =>
+              !cell.registered &&
+              !secondaries.contains(cell) &&
+              !_isCarrierCell(cell),
+        )
         .toList();
+  }
+
+  /// True when the privileged reader named this cell as a component carrier.
+  ///
+  /// The reader reports a PCI per carrier, and that is the same PCI the scan
+  /// lists for the cell feeding it. Registered cells never reach this test, so
+  /// the anchor itself is excluded by the caller rather than here.
+  bool _isCarrierCell(CellTower cell) {
+    final pci = cell.pci;
+    if (pci == null || pci <= 0) return false;
+    for (final carrier in carriers) {
+      if (carrier.tech == cell.tech && carrier.pci == pci) return true;
+    }
+    return false;
   }
 
   /// Best explanation for an empty reading on this SIM, or null when fine.

@@ -159,7 +159,7 @@ class ServingView {
       for (final carrier in sim.carriers)
         MapEntry(
           '${carrier.bandLabel ?? '?'} · ${_techLabel(carrier.tech)}',
-          '${shortMhz(carrier.bandwidthMhz)} MHz',
+          _carrierValue(carrier, sim),
         ),
       MapEntry('Aggregate', '${shortMhz(sim.aggregatedBandwidthMhz)} MHz'),
     ];
@@ -173,28 +173,81 @@ class ServingView {
     return entries;
   }
 
+  /// A carrier row: its width, then the cell it is coming from — frequency and
+  /// level — when the modem names a PCI that matches one of the cells heard.
+  static String _carrierValue(RadioCarrier carrier, SimReading sim) {
+    final parts = <String>['${shortMhz(carrier.bandwidthMhz)} MHz'];
+    final cell = carrierCell(carrier, sim);
+    if (cell?.downlinkMhz case final mhz?) {
+      parts.add('${mhz.toStringAsFixed(0)} MHz');
+    }
+    if (cell?.dbm case final dbm?) parts.add('$dbm dBm');
+    return parts.join(' · ');
+  }
+
+  /// The cell [carrier] is being received from.
+  ///
+  /// A carrier config names a band and a width but never a cell, so the PCI it
+  /// does report is the only exact handle — and it is the same PCI the scan
+  /// lists for that cell. Without one, the strongest cell heard on that band
+  /// stands in, since a carrier has to be one the phone can hear at all.
+  static CellTower? carrierCell(RadioCarrier carrier, SimReading sim) {
+    final pci = carrier.pci;
+    if (pci != null && pci > 0) {
+      for (final cell in sim.cells) {
+        if (cell.tech == carrier.tech && cell.pci == pci) return cell;
+      }
+    }
+    if (carrier.band <= 0) return null;
+    CellTower? best;
+    for (final cell in sim.cells) {
+      if (cell.tech != carrier.tech) continue;
+      if (!cellBands(cell).contains(carrier.band)) continue;
+      if (cell.downlinkMhz == null) continue;
+      if (best == null || (cell.dbm ?? -200) > (best.dbm ?? -200)) best = cell;
+    }
+    return best;
+  }
+
+  /// Every band the cell's identity mentions, its own first.
+  ///
+  /// A cell reporting band 29 alongside band 2 is describing its aggregation
+  /// layers, so matching a carrier has to consider the whole list — matching
+  /// only the first entry is what let a B29 layer take the anchor's width away.
+  static List<int> cellBands(CellTower cell) {
+    final bands = <int>[];
+    final own = cell.tech == CellTech.nr ? cell.nrArfcnBand : cell.earfcnBand;
+    if (own != null) bands.add(own);
+    bands.addAll(cell.bands);
+    return bands.toSet().toList();
+  }
+
   /// How wide the carrier [cell] sits on, when the reader named it.
   ///
-  /// A cell's identity carries no width, so this has to come from the carrier
-  /// list — matched on the band the modem reported, or taken outright when the
-  /// reader saw exactly one carrier of that technology (an NSA leg usually
-  /// hides its band, and then that single NR carrier is the answer).
+  /// PCI is the identity that survives aggregation: once a B29 layer or an NR
+  /// leg attaches, the cell's band list stops describing only the anchor, but
+  /// PCI still names the same radio. Band is the fallback, and a lone carrier
+  /// of the technology the last one — an NSA leg usually hides its band, and
+  /// then that single NR carrier is the answer.
   static String? bandwidthFor(CellTower cell, List<RadioCarrier> carriers) {
     final same = carriers.where((carrier) => carrier.tech == cell.tech).toList();
-    if (same.isEmpty) return null;
-    final band = cell.bands.isEmpty
-        ? (cell.tech == CellTech.nr ? cell.nrArfcnBand : cell.earfcnBand)
-        : cell.bands.first;
-    final RadioCarrier? match;
-    if (same.length == 1 && (band == null || same.single.band == band)) {
-      match = same.single;
-    } else if (band != null) {
-      final byBand = same.where((carrier) => carrier.band == band).toList();
-      match = byBand.length == 1 ? byBand.single : null;
-    } else {
-      match = null;
-    }
+    final match = matchCarrier(cell, same);
     return match == null ? null : '${shortMhz(match.bandwidthMhz)} MHz';
+  }
+
+  /// The carrier that *is* [cell], out of the ones on its technology.
+  static RadioCarrier? matchCarrier(CellTower cell, List<RadioCarrier> same) {
+    if (same.isEmpty) return null;
+    final pci = cell.pci;
+    if (pci != null && pci > 0) {
+      final byPci = same.where((carrier) => carrier.pci == pci).toList();
+      if (byPci.length == 1) return byPci.single;
+    }
+    for (final band in cellBands(cell)) {
+      final byBand = same.where((carrier) => carrier.band == band).toList();
+      if (byBand.length == 1) return byBand.single;
+    }
+    return same.length == 1 ? same.single : null;
   }
 
   static String _techLabel(CellTech tech) => switch (tech) {
