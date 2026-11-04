@@ -1242,21 +1242,26 @@ class SimHeaderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 22),
-          if (sim.isNsa && lte != null && nr != null)
-            Row(
-              children: [
-                Expanded(
-                  child: _LegMeter(label: 'LTE anchor', cell: lte),
+          // Every radio the slot is running at once, side by side: an
+          // aggregated LTE carrier is only worth knowing about relative to the
+          // anchor it is bolted onto, so it belongs on this card rather than
+          // three sections down.
+          _SignalRow(
+            legs: [
+              if (sim.isNsa && lte != null && nr != null) ...[
+                ('LTE anchor', lte),
+                ('5G NR', nr),
+              ] else if (serving != null)
+                (sim.isSa ? '5G NR' : 'LTE', serving),
+              for (var i = 0; i < sim.lteSecondaries.length; i++)
+                (
+                  sim.lteSecondaries.length == 1
+                      ? 'LTE secondary'
+                      : 'LTE secondary ${i + 1}',
+                  sim.lteSecondaries[i],
                 ),
-                Container(width: 1, height: 62, color: AppColors.border),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _LegMeter(label: '5G NR', cell: nr),
-                ),
-              ],
-            )
-          else
-            _PrimaryMeter(cell: serving),
+            ],
+          ),
           const SizedBox(height: 18),
           Container(height: 1, color: AppColors.border),
           const SizedBox(height: 12),
@@ -1354,12 +1359,60 @@ class _PrimaryMeter extends StatelessWidget {
   }
 }
 
+/// The meter row on the top card, one meter per radio the slot is running.
+///
+/// A single radio keeps the full-size meter; two or more share the row, and
+/// from three on they drop to a tighter set of bars so three meters still fit
+/// across a phone without the numbers being clipped.
+class _SignalRow extends StatelessWidget {
+  const _SignalRow({required this.legs});
+
+  final List<(String, CellTower)> legs;
+
+  @override
+  Widget build(BuildContext context) {
+    if (legs.isEmpty) return const SizedBox.shrink();
+    if (legs.length == 1) return _PrimaryMeter(cell: legs.single.$2);
+
+    final compact = legs.length > 2;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < legs.length; i++) ...[
+          if (i > 0) ...[
+            Container(
+              width: 1,
+              height: compact ? 48 : 62,
+              color: AppColors.border,
+            ),
+            SizedBox(width: compact ? 8 : 16),
+          ],
+          Expanded(
+            child: _LegMeter(
+              label: legs[i].$1,
+              cell: legs[i].$2,
+              compact: compact,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 /// One leg of an NSA pair: LTE anchor or 5G NR secondary.
 class _LegMeter extends StatelessWidget {
-  const _LegMeter({required this.label, required this.cell});
+  const _LegMeter({
+    required this.label,
+    required this.cell,
+    this.compact = false,
+  });
 
   final String label;
   final CellTower cell;
+
+  /// Tighter bars and type, for a row carrying three or more meters.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1371,18 +1424,25 @@ class _LegMeter extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 9.5,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: compact ? 8.5 : 9.5,
             letterSpacing: 1,
             fontWeight: FontWeight.w600,
             color: AppColors.textMuted,
           ),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: compact ? 8 : 10),
         Row(
           children: [
-            SignalBars(bars: bars, height: 40, barWidth: 8, gap: 4),
-            const SizedBox(width: 10),
+            SignalBars(
+              bars: bars,
+              height: compact ? 30 : 40,
+              barWidth: compact ? 6 : 8,
+              gap: compact ? 3 : 4,
+            ),
+            SizedBox(width: compact ? 7 : 10),
             Flexible(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1390,25 +1450,30 @@ class _LegMeter extends StatelessWidget {
                   Text(
                     cell.dbm?.toString() ?? '—',
                     style: monospace.copyWith(
-                      fontSize: 21,
+                      fontSize: compact ? 17 : 21,
                       height: 1,
                       color: color,
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
+                  Text(
                     'dBm',
-                    style: TextStyle(fontSize: 9.5, color: AppColors.textMuted),
+                    style: TextStyle(
+                      fontSize: compact ? 8.5 : 9.5,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: compact ? 4 : 6),
         Text(
           SignalQuality.label(bars),
-          style: TextStyle(fontSize: 11, color: color),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: compact ? 10 : 11, color: color),
         ),
       ],
     );
