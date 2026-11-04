@@ -8,6 +8,7 @@ SimReading _sim({
   required List<CellTower> cells,
   String nrState = '',
   bool nrConnected = false,
+  List<Map<Object?, Object?>> carriers = const [],
 }) =>
     SimReading.fromMap({
       'slotIndex': 1,
@@ -19,6 +20,7 @@ SimReading _sim({
       'overrideNetworkType': override,
       'nrState': nrState,
       'nrConnected': nrConnected,
+      'carriers': carriers,
       'cells': [
         for (final cell in cells)
           {
@@ -87,6 +89,31 @@ void main() {
   });
 
   group('badgeForSim', () {
+    test('the reader\'s LTE_CA carriers make an otherwise plain slot LTE+', () {
+      // While the radio aggregates it labels its LTE carriers 19
+      // (NETWORK_TYPE_LTE_CA). Here there is no SDL and no second cell, and the
+      // override is NR_NSA, which never says LTE_CA — the reader is the only
+      // witness that aggregation is up.
+      final aggregated = _sim(
+        override: 'NR_NSA',
+        cells: [_cell('LTE')],
+        carriers: const [
+          {'net': 19, 'band': 66, 'bw': 10000, 'pci': null},
+          {'net': 19, 'band': 2, 'bw': 20000, 'pci': null},
+        ],
+      );
+      final plain = _sim(
+        override: 'NONE',
+        cells: [_cell('LTE')],
+        carriers: const [
+          {'net': 13, 'band': 66, 'bw': 10000, 'pci': null},
+        ],
+      );
+
+      expect(badgeForSim(aggregated), 'LTE+');
+      expect(badgeForSim(plain), 'LTE');
+    });
+
     test('an NSA slot with only its LTE anchor shows LTE', () {
       // The platform still says NR_NSA after the 5G leg has gone. The badge
       // describes the radio that is serving, so it says LTE rather than

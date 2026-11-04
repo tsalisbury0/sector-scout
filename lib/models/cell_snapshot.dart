@@ -661,18 +661,34 @@ class RadioCarrier {
     required this.band,
     required this.bandwidthKhz,
     this.pci,
+    this.networkType,
   });
 
   factory RadioCarrier.fromMap(Map<Object?, Object?> map) {
+    final net = _int(map['net']);
     return RadioCarrier(
-      tech: _techFromNetworkType(_int(map['net'])),
+      tech: _techFromNetworkType(net),
       band: _int(map['band']) ?? 0,
       bandwidthKhz: _int(map['bw']) ?? 0,
       pci: _int(map['pci']),
+      networkType: net,
     );
   }
 
   final CellTech tech;
+
+  /// The raw `TelephonyManager.NETWORK_TYPE_*` the framework reported, when
+  /// the value came from the reader rather than being inferred.
+  ///
+  /// [tech] flattens both LTE values into LTE, which is all the cards need.
+  /// The raw type is kept because 19 — `NETWORK_TYPE_LTE_CA` — is what the
+  /// radio itself uses for an LTE carrier it is aggregating, and that is the
+  /// only evidence of live CA when the platform's display override says
+  /// `NR_NSA` or reports nothing at all.
+  final int? networkType;
+
+  /// True when the radio labelled this carrier as an aggregated LTE one.
+  bool get isLteCa => networkType == 19;
 
   /// 3GPP band, or 0 when the modem named none.
   final int band;
@@ -856,10 +872,23 @@ class SimReading {
   /// as soon as a B29 is underneath: a downlink-only carrier cannot be there
   /// unless it is aggregated. The platform's own CA overrides count too, for
   /// radios that aggregate without exposing the second carrier.
+  ///
+  /// The privileged reader is the last, and often the only, witness. While it
+  /// is aggregating, the radio reports its LTE carriers as
+  /// `NETWORK_TYPE_LTE_CA` — and a slot running two LTE carriers is aggregated
+  /// whatever the label says. That is what shows **LTE+** during CA on a link
+  /// the platform calls `NR_NSA`, which never says `LTE_CA`, or on a build with
+  /// no display override at all.
   bool get lteAggregated =>
       lteSecondaries.isNotEmpty ||
       overrideNetworkType == 'LTE_CA' ||
-      overrideNetworkType == 'LTE_ADVANCED_PRO';
+      overrideNetworkType == 'LTE_ADVANCED_PRO' ||
+      carriers.any((carrier) => carrier.isLteCa) ||
+      lteCarriers.length > 1;
+
+  /// The carriers the radio is running on LTE, aggregated or not.
+  List<RadioCarrier> get lteCarriers =>
+      carriers.where((carrier) => carrier.tech == CellTech.lte).toList();
 
   /// PLMN of the cell this slot is actually registered on — the main carrier.
   ///
