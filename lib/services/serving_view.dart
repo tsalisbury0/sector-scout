@@ -177,49 +177,12 @@ class ServingView {
   /// level — when the modem names a PCI that matches one of the cells heard.
   static String _carrierValue(RadioCarrier carrier, SimReading sim) {
     final parts = <String>['${shortMhz(carrier.bandwidthMhz)} MHz'];
-    final cell = carrierCell(carrier, sim);
+    final cell = sim.carrierCell(carrier);
     if (cell?.downlinkMhz case final mhz?) {
       parts.add('${mhz.toStringAsFixed(0)} MHz');
     }
     if (cell?.dbm case final dbm?) parts.add('$dbm dBm');
     return parts.join(' · ');
-  }
-
-  /// The cell [carrier] is being received from.
-  ///
-  /// A carrier config names a band and a width but never a cell, so the PCI it
-  /// does report is the only exact handle — and it is the same PCI the scan
-  /// lists for that cell. Without one, the strongest cell heard on that band
-  /// stands in, since a carrier has to be one the phone can hear at all.
-  static CellTower? carrierCell(RadioCarrier carrier, SimReading sim) {
-    final pci = carrier.pci;
-    if (pci != null && pci > 0) {
-      for (final cell in sim.cells) {
-        if (cell.tech == carrier.tech && cell.pci == pci) return cell;
-      }
-    }
-    if (carrier.band <= 0) return null;
-    CellTower? best;
-    for (final cell in sim.cells) {
-      if (cell.tech != carrier.tech) continue;
-      if (!cellBands(cell).contains(carrier.band)) continue;
-      if (cell.downlinkMhz == null) continue;
-      if (best == null || (cell.dbm ?? -200) > (best.dbm ?? -200)) best = cell;
-    }
-    return best;
-  }
-
-  /// Every band the cell's identity mentions, its own first.
-  ///
-  /// A cell reporting band 29 alongside band 2 is describing its aggregation
-  /// layers, so matching a carrier has to consider the whole list — matching
-  /// only the first entry is what let a B29 layer take the anchor's width away.
-  static List<int> cellBands(CellTower cell) {
-    final bands = <int>[];
-    final own = cell.tech == CellTech.nr ? cell.nrArfcnBand : cell.earfcnBand;
-    if (own != null) bands.add(own);
-    bands.addAll(cell.bands);
-    return bands.toSet().toList();
   }
 
   /// How wide the carrier [cell] sits on, when the reader named it.

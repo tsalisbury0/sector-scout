@@ -689,6 +689,19 @@ class RadioCarrier {
   String? get bandLabel => band > 0 ? bandName(band, is5g: tech.is5g) : null;
 }
 
+/// Every band a cell's identity mentions, its own first.
+///
+/// A cell reporting band 29 alongside band 2 is describing its aggregation
+/// layers, so matching a carrier has to consider the whole list — matching only
+/// the first entry is what let a B29 layer take the anchor's width away.
+List<int> cellBands(CellTower cell) {
+  final bands = <int>[];
+  final own = cell.tech == CellTech.nr ? cell.nrArfcnBand : cell.earfcnBand;
+  if (own != null) bands.add(own);
+  bands.addAll(cell.bands);
+  return bands.toSet().toList();
+}
+
 /// Everything read from one SIM slot.
 class SimReading {
   const SimReading({
@@ -961,18 +974,42 @@ class SimReading {
         .toList();
   }
 
-  /// True when the privileged reader named this cell as a component carrier.
+  /// True when this cell is the one feeding a component carrier.
   ///
-  /// The reader reports a PCI per carrier, and that is the same PCI the scan
-  /// lists for the cell feeding it. Registered cells never reach this test, so
-  /// the anchor itself is excluded by the caller rather than here.
+  /// It answers by asking [carrierCell] the same question the aggregation card
+  /// asks, so whatever cell the card is naming is the cell that leaves this
+  /// list — the anchor is excluded by the caller instead, being registered.
   bool _isCarrierCell(CellTower cell) {
-    final pci = cell.pci;
-    if (pci == null || pci <= 0) return false;
     for (final carrier in carriers) {
-      if (carrier.tech == cell.tech && carrier.pci == pci) return true;
+      if (carrier.tech == cell.tech && carrierCell(carrier) == cell) return true;
     }
     return false;
+  }
+
+  /// The cell a carrier is being received from.
+  ///
+  /// A carrier config names a band and a width, and sometimes a PCI — never a
+  /// cell. The PCI it does report is the exact handle, and the scan lists the
+  /// same one for the cell feeding it. Without one the strongest cell heard on
+  /// that band stands in, since a carrier has to be something the phone can
+  /// hear; this S25 reports no PCI at all for its LTE carriers (`pcinull`), so
+  /// the band path is the one that carries here.
+  CellTower? carrierCell(RadioCarrier carrier) {
+    final pci = carrier.pci;
+    if (pci != null && pci > 0) {
+      for (final cell in cells) {
+        if (cell.tech == carrier.tech && cell.pci == pci) return cell;
+      }
+    }
+    if (carrier.band <= 0) return null;
+    CellTower? best;
+    for (final cell in cells) {
+      if (cell.tech != carrier.tech) continue;
+      if (!cellBands(cell).contains(carrier.band)) continue;
+      if (cell.downlinkMhz == null) continue;
+      if (best == null || (cell.dbm ?? -200) > (best.dbm ?? -200)) best = cell;
+    }
+    return best;
   }
 
   /// Best explanation for an empty reading on this SIM, or null when fine.
