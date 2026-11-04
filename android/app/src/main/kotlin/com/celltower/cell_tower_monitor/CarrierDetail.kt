@@ -16,7 +16,7 @@ data class RadioCarrier(
     val band: Int,
     /** Downlink width in kHz, exactly as the framework reports it. */
     val bandwidthKhz: Int,
-    /** `TelephonyManager.NETWORK_TYPE_*` of this carrier. */
+    /** `TelephonyManager.NETWORK_TYPE_*` of this carrier — NR is 20. */
     val networkType: Int,
     /** Physical cell ID, or null when the framework reports it unknown. */
     val pci: Int?,
@@ -27,23 +27,25 @@ data class RadioCarrier(
  *
  * Nothing here needs the Android framework: [parse] takes the JSON the user
  * service produced, so the wire format and the totals can be tested on the JVM
- * — the situation they describe (a modem that reports four aggregated carriers)
+ * — the situation they describe (a modem running four aggregated carriers)
  * cannot be produced on demand.
  */
-data class CarrierDetail(
-    val carriers: List<RadioCarrier>,
-    /** QCI of the active data bearer, or null when none is up. */
-    val qci: Int?,
-) {
+data class CarrierDetail(val carriers: List<RadioCarrier>) {
 
     /** Aggregate downlink width across every component carrier. */
     val totalBandwidthKhz: Int get() = carriers.sumOf { it.bandwidthKhz }
 
-    val isEmpty: Boolean get() = carriers.isEmpty() && qci == null
+    val isEmpty: Boolean get() = carriers.isEmpty()
+
+    /** Carriers on NR, as opposed to the LTE anchor and any LTE layers. */
+    val nrCarriers: List<RadioCarrier> get() = carriers.filter { it.networkType == NR }
 
     companion object {
 
-        val EMPTY = CarrierDetail(emptyList(), null)
+        /** `TelephonyManager.NETWORK_TYPE_NR`, spelled out so this stays framework-free. */
+        const val NR = 20
+
+        val EMPTY = CarrierDetail(emptyList())
 
         /**
          * Decodes the user service's JSON.
@@ -70,12 +72,7 @@ data class CarrierDetail(
                         pci = pci?.takeIf { it >= 0 },
                     )
                 }
-                val qci = if (root.isNull("qci")) {
-                    null
-                } else {
-                    root.optInt("qci", 0).takeIf { it in 1..255 }
-                }
-                CarrierDetail(carriers, qci)
+                CarrierDetail(carriers)
             } catch (error: Exception) {
                 EMPTY
             }

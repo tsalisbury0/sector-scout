@@ -235,13 +235,12 @@ object CellSnapshot {
         m["plmn"] = ownPlmn
 
         // Carrier detail, when Shizuku is lending its shell identity: one row
-        // per aggregated carrier with its own width, plus the QCI of the data
-        // bearer. Empty without it, and the card simply shows no such rows.
+        // per aggregated carrier with its own width and technology. Empty
+        // without it, and the card simply shows no such rows.
         val detail = PrivilegedRadio.detail(sub.subscriptionId)
         if (detail.carriers.isNotEmpty()) {
             m["carriers"] = CarrierDetail.toMaps(detail)
         }
-        detail.qci?.let { m["qci"] = it }
 
         if (BuildConfig.DEBUG) {
             Log.d(

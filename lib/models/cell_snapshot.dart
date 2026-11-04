@@ -703,7 +703,6 @@ class SimReading {
     this.nrState = '',
     this.nrSignal = false,
     this.carriers = const [],
-    this.qci,
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -726,7 +725,7 @@ class SimReading {
           .whereType<Map<Object?, Object?>>()
           .map(RadioCarrier.fromMap)
           .toList(),
-      qci: _int(map['qci']),
+
     );
   }
 
@@ -758,10 +757,6 @@ class SimReading {
   /// Component carriers from the Shizuku reader, empty without it.
   final List<RadioCarrier> carriers;
 
-  /// QCI of the active data bearer, or null when none is up — or when the
-  /// reader is not bound.
-  final int? qci;
-
   /// True when the platform says the NR leg is connected, cell or no cell.
   bool get nrConnected => nrState == 'CONNECTED' || nrSignal;
 
@@ -772,6 +767,10 @@ class SimReading {
   /// Total downlink width across every aggregated carrier.
   int get aggregatedBandwidthKhz =>
       carriers.fold(0, (sum, carrier) => sum + carrier.bandwidthKhz);
+
+  /// The carriers running on NR, as opposed to the LTE anchor and layers.
+  List<RadioCarrier> get nrCarriers =>
+      carriers.where((carrier) => carrier.tech == CellTech.nr).toList();
 
   double get aggregatedBandwidthMhz => aggregatedBandwidthKhz / 1000;
 

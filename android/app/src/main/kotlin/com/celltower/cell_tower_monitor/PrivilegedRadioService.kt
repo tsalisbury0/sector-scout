@@ -1,7 +1,6 @@
 package com.celltower.cell_tower_monitor
 
 import android.content.Context
-import android.os.IBinder
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -14,18 +13,13 @@ import java.lang.reflect.Method
  *
  * Shizuku starts this class as a bound user service: a separate process whose
  * Linux UID is the one Shizuku itself runs as — 2000 for ADB, 0 for root. That
- * identity is what makes `PhysicalChannelConfig` and the QCI bearer sessions
- * readable at all; a normal app cannot hold the permissions they check.
+ * identity is what makes the radio's physical channel configuration readable at
+ * all; a normal app cannot hold the permission it checks.
  *
- * It is deliberately *not* an Android `Service`. Shizuku instantiates this
- * class directly and expects a binder, so the class extends the generated
- * stub, and the optional [Context] constructor (Shizuku 13+) is the only
- * framework handle it gets.
- *
- * Everything below is reflection on purpose: the classes involved
- * (`PhysicalChannelConfig`, `PhysicalChannelConfig`, `DataCallResponse`,
- * `QosBearerSession`, `ITelephony`) are hidden or system APIs and are not in
- * the public SDK the app compiles against.
+ * It answers one question — which carriers the radio is running, on what band,
+ * at what width, and whether each one is NR — and nothing else. Everything
+ * below is reflection on purpose: `PhysicalChannelConfig` is a system class and
+ * is not in the public SDK the app compiles against.
  */
 class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.Stub() {
 
@@ -49,7 +43,6 @@ class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.S
             JSONObject()
                 .put("uid", Process.myUid())
                 .put("carriers", carriers(tm, subId))
-                .put("qci", qci(subId) ?: JSONObject.NULL)
                 .toString()
         }
     } catch (failure: Throwable) {
@@ -104,62 +97,6 @@ class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.S
         firstList(state, names, subId)?.let { return it }
         Log.d(TAG, "no physical channel configs on this firmware")
         return emptyList()
-    }
-
-    // ---------------------------------------------------------------------
-    // QCI: the class of the bearer currently carrying data
-    // ---------------------------------------------------------------------
-
-    /**
-     * QCI of the active data call, read off the QoS bearer sessions.
-     *
-     * The sessions live on `DataCallResponse`, which only the phone binder
-     * hands out; every step is reflective and every step is allowed to fail.
-     * With several calls up the last answered one wins, which is the call the
-     * modem listed last — the same one the status bar counts.
-     */
-    private fun qci(subId: Int): Int? {
-        val phone = iTelephony() ?: return null
-        val calls = invokeMatching(phone, "getDataCallList", arrayOf<Any?>(subId))
-            ?: invokeMatching(phone, "getDataCallList", emptyArray())
-            ?: return null
-        val responses = calls as? List<*> ?: return null
-
-        var found: Int? = null
-        for (response in responses) {
-            val sessions = call(response, "getQosBearerSessions") as? List<*>
-            if (sessions != null) {
-                for (session in sessions) {
-                    val value = call(call(session, "getQos"), "getQci") as? Int
-                    if (value != null && value in 1..255) found = value
-                }
-            }
-            val fallback = call(call(response, "getDefaultQos"), "getQci") as? Int
-            if (fallback != null && fallback in 1..255) found = fallback
-        }
-        return found
-    }
-
-    /**
-     * The phone binder, as `ITelephony`.
-     *
-     * `ServiceManager` and `ITelephony` are both hidden, and the interface only
-     * exists as a generated stub in the framework — so it is fetched by name
-     * and asked for its own `asInterface`.
-     */
-    private fun iTelephony(): Any? = try {
-        val manager = Class.forName("android.os.ServiceManager")
-        val binder = manager.getMethod("getService", String::class.java)
-            .invoke(null, "phone") as? IBinder
-        if (binder == null) {
-            null
-        } else {
-            val stub = Class.forName("com.android.internal.telephony.ITelephony\$Stub")
-            stub.getMethod("asInterface", IBinder::class.java).invoke(null, binder)
-        }
-    } catch (error: Throwable) {
-        Log.d(TAG, "ITelephony unavailable: ${error.message}")
-        null
     }
 
     // ---------------------------------------------------------------------

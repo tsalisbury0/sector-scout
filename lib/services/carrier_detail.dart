@@ -40,8 +40,9 @@ class CarrierDetailStatus {
 
   String get label => switch (state) {
     CarrierDetailState.ready => uid == 0
-        ? 'Live, as root. Bands, widths and QCI are being read.'
-        : 'Live, as the adb shell user. Bands, widths and QCI are being read.',
+        ? 'Live, as root. Every aggregated carrier and its width is being read.'
+        : 'Live, as the adb shell user. Every aggregated carrier and its '
+              'width is being read.',
     CarrierDetailState.starting => 'Starting the reader…',
     CarrierDetailState.noPermission =>
       'Shizuku is running, but has not granted this app access yet.',

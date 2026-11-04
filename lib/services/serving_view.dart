@@ -144,14 +144,13 @@ class ServingView {
     return [...quality, ...carrierEntries(sim)];
   }
 
-  /// The aggregation rows: each carrier's band and width, the total, and the
-  /// QCI of the bearer carrying data.
+  /// The aggregation rows: each carrier's band and width, then the total.
   ///
   /// Empty unless the privileged reader answered, which is why these rows
   /// appear and disappear with Shizuku instead of showing dashes: without it
   /// the app has no width to report, and a blank row would claim otherwise.
   static List<MapEntry<String, String>> carrierEntries(SimReading sim) {
-    if (sim.carriers.isEmpty && sim.qci == null) return const [];
+    if (sim.carriers.isEmpty) return const [];
     final entries = <MapEntry<String, String>>[];
     if (sim.carriers.isNotEmpty) {
       final widths = sim.carriers
@@ -178,7 +177,6 @@ class ServingView {
         ),
       );
     }
-    if (sim.qci case final qci?) entries.add(MapEntry('QCI', '$qci'));
     return entries;
   }
 

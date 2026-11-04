@@ -20,14 +20,25 @@ class CarrierDetailTest {
               {"band":2,"bw":20000,"net":13,"pci":101},
               {"band":66,"bw":15000,"net":13,"pci":202},
               {"band":41,"bw":100000,"net":20,"pci":303}
-            ],"qci":9}
+            ]}
             """.trimIndent(),
         )
 
         assertEquals(3, detail.carriers.size)
         assertEquals(listOf(2, 66, 41), detail.carriers.map { it.band })
         assertEquals(135000, detail.totalBandwidthKhz)
-        assertEquals(9, detail.qci)
+    }
+
+    @Test
+    fun `separates the NR carriers from the LTE anchor`() {
+        val detail = CarrierDetail.parse(
+            """{"carriers":[
+              {"band":2,"bw":20000,"net":13},
+              {"band":41,"bw":100000,"net":20}
+            ]}""",
+        )
+
+        assertEquals(listOf(41), detail.nrCarriers.map { it.band })
     }
 
     @Test
@@ -63,16 +74,9 @@ class CarrierDetailTest {
     }
 
     @Test
-    fun `qci outside the 3GPP range is not a class`() {
-        assertNull(CarrierDetail.parse("""{"carriers":[],"qci":0}""").qci)
-        assertNull(CarrierDetail.parse("""{"carriers":[],"qci":300}""").qci)
-        assertEquals(65, CarrierDetail.parse("""{"carriers":[],"qci":65}""").qci)
-    }
-
-    @Test
     fun `maps carry the shape the snapshot hands to dart`() {
         val maps = CarrierDetail.toMaps(
-            CarrierDetail.parse("""{"carriers":[{"band":41,"bw":100000,"net":20,"pci":303}],"qci":7}"""),
+            CarrierDetail.parse("""{"carriers":[{"band":41,"bw":100000,"net":20,"pci":303}]}"""),
         )
 
         assertEquals(1, maps.size)
@@ -84,8 +88,8 @@ class CarrierDetailTest {
 
     @Test
     fun `an unmatched payload is empty rather than throwing`() {
-        // A carrier with no width and no technology is what an older firmware
-        // returns for a band it cannot place; it must not abort the rest.
+        // A carrier with no width is what an older firmware returns for a band
+        // it cannot place; it must not abort the rest.
         val detail = CarrierDetail.parse(
             """{"carriers":[{"band":5},{"band":5,"bw":5000,"net":13,"pci":77}]}""",
         )

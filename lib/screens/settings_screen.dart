@@ -221,17 +221,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionLabel(
             'Carrier detail',
             note:
-                'The width of each aggregated carrier, and the QCI of the data '
-                'bearer, sit behind hidden telephony APIs. Shizuku lends the app '
-                'a shell-identity service that can read them — started once over '
-                'adb, or from Android 11’s wireless debugging, so it needs no '
-                'root. Without it the app reads exactly what the public APIs '
-                'expose and these rows stay away.',
+                'The width of each aggregated carrier sits behind hidden '
+                'telephony APIs. Shizuku lends the app a shell-identity service '
+                'that can read them — started once over adb, or from Android '
+                '11’s wireless debugging, so it needs no root. Without it the '
+                'app reads exactly what the public APIs expose and these rows '
+                'stay away.',
           ),
           _SettingsCard(
             children: [
               _SettingsAction(
-                title: 'Bands, bandwidth and QCI',
+                title: 'Aggregated carriers and bandwidth',
                 subtitle: _carrierStatus?.label ?? 'Checking…',
                 action: _carrierStatus?.actionLabel ?? 'Check',
                 onPressed: () => unawaited(_setupCarrierDetail()),
