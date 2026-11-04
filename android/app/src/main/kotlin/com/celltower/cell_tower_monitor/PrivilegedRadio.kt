@@ -214,7 +214,19 @@ object PrivilegedRadio {
         worker.execute {
             try {
                 val json = bound.readCarrierDetail(subId)
-                cache[subId] = CachedRead(CarrierDetail.parse(json), System.currentTimeMillis())
+                val detail = CarrierDetail.parse(json)
+                cache[subId] = CachedRead(detail, System.currentTimeMillis())
+                // What the app actually gets, so a missing width on a card can
+                // be told apart from a carrier the modem never reported.
+                if (detail.carriers.isNotEmpty()) {
+                    Log.d(
+                        TAG,
+                        "sub $subId: " + detail.carriers.joinToString { carrier ->
+                            "${carrier.band}/${carrier.bandwidthKhz}kHz/" +
+                                "net${carrier.networkType}/pci${carrier.pci}"
+                        },
+                    )
+                }
             } catch (error: Throwable) {
                 Log.w(TAG, "read failed for sub $subId: ${error.message}")
             } finally {
