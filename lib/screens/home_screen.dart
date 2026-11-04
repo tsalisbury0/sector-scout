@@ -954,6 +954,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           for (final secondary in sim.lteSecondaries) ...[
             _DetailCard(
+              // Each aggregated LTE carrier gets its own meter, the way the NR
+              // leg of an NSA pair does on the main card: a secondary can be
+              // much weaker than the anchor, and that is the whole reason to
+              // look at it. The bars come from SignalStrength, so they are
+              // there whether or not Shizuku is running.
+              header: _LegMeter(label: 'LTE secondary', cell: secondary),
               entries: _servingEntries(
                 secondary,
                 fallbackPlmn: sim.registeredPlmn,
@@ -1414,9 +1420,13 @@ class _LegMeter extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.entries});
+  const _DetailCard({required this.entries, this.header});
 
   final List<MapEntry<String, String>> entries;
+
+  /// Drawn above the first row, inside the same card — a signal meter, for a
+  /// card that describes one radio of its own rather than a whole slot.
+  final Widget? header;
 
   @override
   Widget build(BuildContext context) {
@@ -1428,6 +1438,16 @@ class _DetailCard extends StatelessWidget {
       ),
       child: Column(
         children: [
+          if (header case final header?) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+              child: header,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(height: 1, color: AppColors.border),
+            ),
+          ],
           for (var i = 0; i < entries.length; i++) ...[
             if (i > 0)
               Padding(
