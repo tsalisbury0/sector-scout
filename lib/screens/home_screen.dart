@@ -906,6 +906,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // sector and anchor band disappear.
           entries: _servingEntries(
             sim.isNsa && lte != null && nr != null ? lte : sim.serving!,
+            carriers: sim.carriers,
           ),
         ),
         if (sim.isNsa && lte != null && nr != null) ...[
@@ -926,7 +927,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 8),
           _DetailCard(
-            entries: _servingEntries(nr, gnbEstimate: sim.nsaGnbEstimate),
+            entries: _servingEntries(
+              nr,
+              gnbEstimate: sim.nsaGnbEstimate,
+              carriers: sim.carriers,
+            ),
           ),
         ],
         // LTE B29 is a supplemental downlink: it only shows up once it is
@@ -952,10 +957,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               entries: _servingEntries(
                 secondary,
                 fallbackPlmn: sim.registeredPlmn,
+                carriers: sim.carriers,
               ),
             ),
             const SizedBox(height: 8),
           ],
+        ],
+        // The carriers the radio is actually running together, straight from
+        // the privileged reader: a separate card, because this is aggregation
+        // rather than a property of the one cell above it.
+        if (sim.carriers.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _SectionLabel(
+            '${prefix}Carrier aggregation',
+            note:
+                'Each component carrier the radio is running, with its own '
+                'downlink width and technology, read through Shizuku. The '
+                'widths add up, and the aggregate is what the link can use at '
+                'once — a single carrier is listed too, with no aggregation '
+                'behind it.',
+          ),
+          const SizedBox(height: 8),
+          _DetailCard(entries: ServingView.carrierEntries(sim)),
         ],
         const SizedBox(height: 20),
         _SectionLabel('${prefix}Radio quality'),
@@ -1023,11 +1046,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     CellTower cell, {
     int? gnbEstimate,
     String? fallbackPlmn,
+    List<RadioCarrier> carriers = const [],
   }) =>
       ServingView.entries(
         cell,
         gnbEstimate: gnbEstimate,
         fallbackPlmn: fallbackPlmn,
+        carriers: carriers,
       );
 
   List<MapEntry<String, String>> _qualityEntries(SimReading sim) =>

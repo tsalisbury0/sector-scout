@@ -371,7 +371,14 @@ class DashboardHtml {
         )
         // The anchor card must show the LTE cell itself, or an NSA pair renders
         // the 5G card twice and the eNB, sector and anchor band disappear.
-        ..write(_detail(ServingView.entries(paired ? lte : sim.serving!)));
+        ..write(
+          _detail(
+            ServingView.entries(
+              paired ? lte : sim.serving!,
+              carriers: sim.carriers,
+            ),
+          ),
+        );
 
       if (sim.isNsa && nr == null) {
         out.write(
@@ -391,7 +398,11 @@ class DashboardHtml {
           ..write('<div class="h2">${_esc(prefix)}5G NR secondary</div>')
           ..write(
             _detail(
-              ServingView.entries(nr, gnbEstimate: sim.nsaGnbEstimate),
+              ServingView.entries(
+                nr,
+                gnbEstimate: sim.nsaGnbEstimate,
+                carriers: sim.carriers,
+              ),
             ),
           );
         if (nr.gnb == null) {
@@ -420,6 +431,7 @@ class DashboardHtml {
               ServingView.entries(
                 secondary,
                 fallbackPlmn: sim.registeredPlmn,
+                carriers: sim.carriers,
               ),
             ),
           );
@@ -435,6 +447,12 @@ class DashboardHtml {
             'cell is registered on.',
           ),
         );
+      }
+
+      if (sim.carriers.isNotEmpty) {
+        out
+          ..write('<div class="h2">${_esc(prefix)}Carrier aggregation</div>')
+          ..write(_detail(ServingView.carrierEntries(sim)));
       }
 
       out

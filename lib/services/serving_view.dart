@@ -25,6 +25,7 @@ class ServingView {
     CellTower cell, {
     int? gnbEstimate,
     String? fallbackPlmn,
+    List<RadioCarrier> carriers = const [],
   }) {
     final entries = <MapEntry<String, String>>[];
 
@@ -83,6 +84,12 @@ class ServingView {
         ),
       );
     }
+    // The width of *this* carrier, when the privileged reader named it. The
+    // band list on a cell says nothing about how wide the carrier is, so
+    // without the reader the row is absent rather than guessed.
+    if (bandwidthFor(cell, carriers) case final bandwidth?) {
+      entries.add(MapEntry('Bandwidth', bandwidth));
+    }
     // Band 106's build shows its own channel numbers rather than the band-8
     // raster the modem happens to report. A held channel is marked as such: the
     // modem stopped reporting it, and the same cell is still served.
@@ -128,57 +135,74 @@ class ServingView {
     return entries;
   }
 
-  /// Radio-quality rows for a slot: one block per leg of an NSA pair, then the
-  /// component carriers when the Shizuku reader is bound.
+  /// Radio-quality rows for a slot: one block per leg of an NSA pair.
   static List<MapEntry<String, String>> qualityEntries(SimReading sim) {
     final lte = sim.lteServing;
     final nr = sim.nrServing;
 
-    final List<MapEntry<String, String>> quality;
     if (sim.isNsa && lte != null && nr != null) {
-      quality = [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')];
-    } else {
-      final cell = sim.serving;
-      quality = cell == null ? const [] : qualityFor(cell, null);
+      return [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')];
     }
-    return [...quality, ...carrierEntries(sim)];
+    final cell = sim.serving;
+    return cell == null ? const [] : qualityFor(cell, null);
   }
 
-  /// The aggregation rows: each carrier's band and width, then the total.
+  /// The carrier-aggregation card: one row per component carrier, then the
+  /// totals.
   ///
-  /// Empty unless the privileged reader answered, which is why these rows
-  /// appear and disappear with Shizuku instead of showing dashes: without it
+  /// Empty unless the privileged reader answered, which is why the card
+  /// appears and disappears with Shizuku instead of showing dashes: without it
   /// the app has no width to report, and a blank row would claim otherwise.
   static List<MapEntry<String, String>> carrierEntries(SimReading sim) {
     if (sim.carriers.isEmpty) return const [];
-    final entries = <MapEntry<String, String>>[];
-    if (sim.carriers.isNotEmpty) {
-      final widths = sim.carriers
-          .map((carrier) => shortMhz(carrier.bandwidthMhz))
-          .join(' + ');
-      entries.add(
+    final entries = <MapEntry<String, String>>[
+      for (final carrier in sim.carriers)
         MapEntry(
-          sim.carriers.length == 1 ? 'Bandwidth' : 'Bandwidth (CA)',
-          sim.carriers.length == 1
-              ? '$widths MHz'
-              : '$widths = ${shortMhz(sim.aggregatedBandwidthMhz)} MHz',
+          '${carrier.bandLabel ?? '?'} · ${_techLabel(carrier.tech)}',
+          '${shortMhz(carrier.bandwidthMhz)} MHz',
         ),
-      );
-      entries.add(
-        MapEntry(
-          'Carriers',
-          sim.carriers
-              .map(
-                (carrier) =>
-                    '${carrier.bandLabel ?? '?'} '
-                    '${shortMhz(carrier.bandwidthMhz)} MHz',
-              )
-              .join(' · '),
-        ),
-      );
+      MapEntry('Aggregate', '${shortMhz(sim.aggregatedBandwidthMhz)} MHz'),
+    ];
+    // The NR side on its own, which is what a 5G reading is judged on; only
+    // worth a row when the link is not NR-only already.
+    final nr = sim.nrCarriers;
+    if (nr.isNotEmpty && nr.length != sim.carriers.length) {
+      final khz = nr.fold(0, (sum, carrier) => sum + carrier.bandwidthKhz);
+      entries.add(MapEntry('NR aggregate', '${shortMhz(khz / 1000)} MHz'));
     }
     return entries;
   }
+
+  /// How wide the carrier [cell] sits on, when the reader named it.
+  ///
+  /// A cell's identity carries no width, so this has to come from the carrier
+  /// list — matched on the band the modem reported, or taken outright when the
+  /// reader saw exactly one carrier of that technology (an NSA leg usually
+  /// hides its band, and then that single NR carrier is the answer).
+  static String? bandwidthFor(CellTower cell, List<RadioCarrier> carriers) {
+    final same = carriers.where((carrier) => carrier.tech == cell.tech).toList();
+    if (same.isEmpty) return null;
+    final band = cell.bands.isEmpty
+        ? (cell.tech == CellTech.nr ? cell.nrArfcnBand : cell.earfcnBand)
+        : cell.bands.first;
+    final RadioCarrier? match;
+    if (same.length == 1 && (band == null || same.single.band == band)) {
+      match = same.single;
+    } else if (band != null) {
+      final byBand = same.where((carrier) => carrier.band == band).toList();
+      match = byBand.length == 1 ? byBand.single : null;
+    } else {
+      match = null;
+    }
+    return match == null ? null : '${shortMhz(match.bandwidthMhz)} MHz';
+  }
+
+  static String _techLabel(CellTech tech) => switch (tech) {
+    CellTech.nr => 'NR',
+    CellTech.lte => 'LTE',
+    CellTech.unknown => '?',
+    _ => tech.raw,
+  };
 
   static List<MapEntry<String, String>> qualityFor(
     CellTower cell,

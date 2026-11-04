@@ -1235,17 +1235,22 @@ class _SimBlock extends StatelessWidget {
         if (serving != null) ...[
           if (paired) ...[
             const _SectionHeading('4G anchor'),
-            _DetailCard(rows: ServingView.entries(lte)),
+            _DetailCard(
+              rows: ServingView.entries(lte, carriers: sim.carriers),
+            ),
             const _SectionHeading('5G NR secondary'),
             _DetailCard(
               rows: ServingView.entries(
                 nr,
                 gnbEstimate: sim.nsaGnbEstimate,
+                carriers: sim.carriers,
               ),
             ),
           ] else ...[
             _SectionHeading(lte == null ? '5G NR' : 'Serving cell'),
-            _DetailCard(rows: ServingView.entries(serving)),
+            _DetailCard(
+              rows: ServingView.entries(serving, carriers: sim.carriers),
+            ),
           ],
           for (final secondary in sim.lteSecondaries) ...[
             const _SectionHeading('4G LTE secondary'),
@@ -1253,8 +1258,13 @@ class _SimBlock extends StatelessWidget {
               rows: ServingView.entries(
                 secondary,
                 fallbackPlmn: lte?.plmn ?? nr?.plmn,
+                carriers: sim.carriers,
               ),
             ),
+          ],
+          if (sim.carriers.isNotEmpty) ...[
+            const _SectionHeading('Carrier aggregation'),
+            _DetailCard(rows: ServingView.carrierEntries(sim)),
           ],
           const _SectionHeading('Radio quality'),
           _DetailCard(rows: ServingView.qualityEntries(sim)),
