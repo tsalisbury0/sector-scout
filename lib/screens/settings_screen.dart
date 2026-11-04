@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/band_filters.dart';
 import '../services/app_settings.dart';
+import '../services/carrier_detail.dart';
 import '../services/signal_notification.dart';
 import '../services/update_checker.dart';
 import '../theme/app_colors.dart';
@@ -24,12 +26,19 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SignalNotification _notification = SignalNotification();
+  final CarrierDetailService _carrierDetail = CarrierDetailService();
+  CarrierDetailStatus? _carrierStatus;
   bool _notificationOn = false;
   bool _loadedNotification = false;
 
   @override
   void initState() {
     super.initState();
+    // The reader is optional and starts on its own when Shizuku is running, so
+    // the row follows the native state rather than a switch of its own.
+    _carrierDetail.status().then((status) {
+      if (mounted) setState(() => _carrierStatus = status);
+    });
     // The switch follows the service, which may have been started from the SIM
     // page or restored by Android after a restart.
     _notification.isOn().then((on) {
@@ -74,6 +83,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (value && !await _confirmNorthAmerica()) return;
     await apply(value);
     if (mounted) setState(() {});
+  }
+
+  /// The one step that moves the reader forward: install, start, grant, or
+  /// re-check once it is bound.
+  Future<void> _setupCarrierDetail() async {
+    final state = _carrierStatus?.state;
+    if (state == CarrierDetailState.noPermission) {
+      await _carrierDetail.request();
+    } else if (state == CarrierDetailState.notInstalled) {
+      await launchUrl(Uri.parse(CarrierDetailService.shizukuDownload));
+    } else if (state == CarrierDetailState.notRunning ||
+        state == CarrierDetailState.unsupported) {
+      await _carrierDetail.openShizuku();
+    }
+    final status = await _carrierDetail.status();
+    if (mounted) setState(() => _carrierStatus = status);
   }
 
   Future<bool> _confirmNorthAmerica() async {
@@ -192,6 +217,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           if (!_notification.isSupported)
+          const SizedBox(height: 20),
+          _SectionLabel(
+            'Carrier detail',
+            note:
+                'The width of each aggregated carrier, and the QCI of the data '
+                'bearer, sit behind hidden telephony APIs. Shizuku lends the app '
+                'a shell-identity service that can read them — started once over '
+                'adb, or from Android 11’s wireless debugging, so it needs no '
+                'root. Without it the app reads exactly what the public APIs '
+                'expose and these rows stay away.',
+          ),
+          _SettingsCard(
+            children: [
+              _SettingsAction(
+                title: 'Bands, bandwidth and QCI',
+                subtitle: _carrierStatus?.label ?? 'Checking…',
+                action: _carrierStatus?.actionLabel ?? 'Check',
+                onPressed: () => unawaited(_setupCarrierDetail()),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           _SectionLabel(
             'Updates',

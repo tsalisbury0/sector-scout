@@ -35,7 +35,9 @@ page:
   and uplink frequencies, PLMN, and a five-bar signal meter.
 - Every neighbour cell the radio can hear, strongest first.
 - NSA and SA 5G, with a separate meter for the LTE anchor and the 5G leg.
-- An optional pinned notification that keeps the serving cell in the shade.
+- Optional carrier detail through [Shizuku](https://shizuku.rikka.app/): the
+  band and width of **every** aggregated carrier, the aggregate, and the QCI of
+  the data bearer.
 - Sharing with another phone over Wi-Fi or Bluetooth, so a second phone or the
   desktop console can watch this one.
 
@@ -112,6 +114,24 @@ dotnet build native/SectorScout/SectorScout.csproj -c Release
 It covers watching phones over Wi-Fi and the test source. Bluetooth watching,
 the scenario editor and the display corrections are still only in the Python
 console for now.
+
+## Carrier detail (Shizuku)
+
+The width of each aggregated carrier, and the QCI of the data bearer, are not in
+any public Android API. They sit behind hidden telephony calls that only the
+shell user may make. The app reads them through Shizuku: a Shizuku user service
+runs this app's own code as uid 2000 (adb) or 0 (root) and answers one JSON
+reading per SIM.
+
+1. Install Shizuku, and start it once over adb — or from Android 11's wireless
+   debugging, with no computer involved.
+2. Open Settings in this app and grant the reader access.
+
+With that, the signal card gains `Bandwidth (CA)`, `Carriers` and `QCI` rows,
+and the LAN dashboard and desktop app show them too. Without it nothing breaks:
+the rows are simply absent and every other reading is unchanged. The reader is
+read-only — it reports what the modem already knows and changes nothing on the
+radio.
 
 ## Permissions
 

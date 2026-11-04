@@ -35,6 +35,9 @@ android {
     buildFeatures {
         // Needed for BuildConfig.DEBUG, used to gate per-SIM diagnostic logs.
         buildConfig = true
+        // The privileged reader's interface is AIDL: Shizuku binds a user
+        // service, and the generated stub is what both sides talk through.
+        aidl = true
     }
 
     buildTypes {
@@ -72,6 +75,15 @@ dependencies {
     // JVM unit tests for ServingMerge: the cell-pairing and held-channel rules
     // run without the framework, so they are tested off-device.
     testImplementation("junit:junit:4.13.2")
+
+    // Carrier detail through Shizuku: `api` carries the user-service binder,
+    // `provider` the content provider that hands over Shizuku's binder.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
+    // CarrierDetail parses the user service's JSON on the JVM too, where
+    // android.jar only carries stubs of org.json.
+    testImplementation("org.json:json:20240303")
 }
 
 flutter {

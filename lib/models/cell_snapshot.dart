@@ -648,6 +648,47 @@ class _NrRecode {
 /// How the 5G layer is attached.
 enum NetworkMode { nsa, sa, lte, legacy, unknown }
 
+/// One component carrier the radio is running right now.
+///
+/// This is the only reading that says *how wide* each carrier is and which of
+/// them are aggregated together: the band list on [CellTower] is per cell and
+/// per scan, while these entries come from the platform's own physical channel
+/// configuration. They arrive only when the Shizuku reader is bound — an empty
+/// list means nothing was read, not that nothing is aggregated.
+class RadioCarrier {
+  const RadioCarrier({
+    required this.tech,
+    required this.band,
+    required this.bandwidthKhz,
+    this.pci,
+  });
+
+  factory RadioCarrier.fromMap(Map<Object?, Object?> map) {
+    return RadioCarrier(
+      tech: _techFromNetworkType(_int(map['net'])),
+      band: _int(map['band']) ?? 0,
+      bandwidthKhz: _int(map['bw']) ?? 0,
+      pci: _int(map['pci']),
+    );
+  }
+
+  final CellTech tech;
+
+  /// 3GPP band, or 0 when the modem named none.
+  final int band;
+
+  /// Downlink width in kHz, as the framework reports it.
+  final int bandwidthKhz;
+
+  /// Physical cell ID of this carrier, when the framework knows it.
+  final int? pci;
+
+  double get bandwidthMhz => bandwidthKhz / 1000;
+
+  /// `B2` / `n41`, or null when the modem named no band.
+  String? get bandLabel => band > 0 ? bandName(band, is5g: tech.is5g) : null;
+}
+
 /// Everything read from one SIM slot.
 class SimReading {
   const SimReading({
@@ -661,6 +702,8 @@ class SimReading {
     this.overrideNetworkType = 'NONE',
     this.nrState = '',
     this.nrSignal = false,
+    this.carriers = const [],
+    this.qci,
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -679,6 +722,11 @@ class SimReading {
       overrideNetworkType: _string(map['overrideNetworkType']) ?? 'NONE',
       nrState: _string(map['nrState']) ?? '',
       nrSignal: map['nrConnected'] == true,
+      carriers: (map['carriers'] as List<Object?>? ?? const [])
+          .whereType<Map<Object?, Object?>>()
+          .map(RadioCarrier.fromMap)
+          .toList(),
+      qci: _int(map['qci']),
     );
   }
 
@@ -707,12 +755,25 @@ class SimReading {
   /// `SignalStrength` carried an NR component).
   final bool nrSignal;
 
+  /// Component carriers from the Shizuku reader, empty without it.
+  final List<RadioCarrier> carriers;
+
+  /// QCI of the active data bearer, or null when none is up — or when the
+  /// reader is not bound.
+  final int? qci;
+
   /// True when the platform says the NR leg is connected, cell or no cell.
   bool get nrConnected => nrState == 'CONNECTED' || nrSignal;
 
   String get label => 'SIM ${slotIndex + 1}';
 
   bool get hasSim => simState == 'READY';
+
+  /// Total downlink width across every aggregated carrier.
+  int get aggregatedBandwidthKhz =>
+      carriers.fold(0, (sum, carrier) => sum + carrier.bandwidthKhz);
+
+  double get aggregatedBandwidthMhz => aggregatedBandwidthKhz / 1000;
 
   CellTower? _registeredTech(CellTech tech) {
     for (final cell in cells) {
@@ -1140,6 +1201,19 @@ class SignalQuality {
   /// Bar count as a 0-1 fraction, useful for layout maths.
   static double fraction(int bars) => math.max(0.0, bars / maxBars);
 }
+
+/// `TelephonyManager.NETWORK_TYPE_*` → the technology shown next to a carrier.
+///
+/// The carrier list reports a network type per component, not a PLMN, so this
+/// is the only way an LTE and an NR carrier in the same aggregation are told
+/// apart.
+CellTech _techFromNetworkType(int? type) => switch (type) {
+  20 => CellTech.nr, // NETWORK_TYPE_NR
+  13 => CellTech.lte, // NETWORK_TYPE_LTE
+  3 || 9 || 10 || 11 || 12 || 15 => CellTech.wcdma,
+  1 || 2 || 16 || 17 => CellTech.gsm,
+  _ => CellTech.unknown,
+};
 
 int? _int(Object? value) {
   if (value == null) return null;

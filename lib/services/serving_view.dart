@@ -128,16 +128,58 @@ class ServingView {
     return entries;
   }
 
-  /// Radio-quality rows for a slot: one block per leg of an NSA pair.
+  /// Radio-quality rows for a slot: one block per leg of an NSA pair, then the
+  /// component carriers when the Shizuku reader is bound.
   static List<MapEntry<String, String>> qualityEntries(SimReading sim) {
     final lte = sim.lteServing;
     final nr = sim.nrServing;
 
+    final List<MapEntry<String, String>> quality;
     if (sim.isNsa && lte != null && nr != null) {
-      return [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')];
+      quality = [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')];
+    } else {
+      final cell = sim.serving;
+      quality = cell == null ? const [] : qualityFor(cell, null);
     }
-    final cell = sim.serving;
-    return cell == null ? const [] : qualityFor(cell, null);
+    return [...quality, ...carrierEntries(sim)];
+  }
+
+  /// The aggregation rows: each carrier's band and width, the total, and the
+  /// QCI of the bearer carrying data.
+  ///
+  /// Empty unless the privileged reader answered, which is why these rows
+  /// appear and disappear with Shizuku instead of showing dashes: without it
+  /// the app has no width to report, and a blank row would claim otherwise.
+  static List<MapEntry<String, String>> carrierEntries(SimReading sim) {
+    if (sim.carriers.isEmpty && sim.qci == null) return const [];
+    final entries = <MapEntry<String, String>>[];
+    if (sim.carriers.isNotEmpty) {
+      final widths = sim.carriers
+          .map((carrier) => shortMhz(carrier.bandwidthMhz))
+          .join(' + ');
+      entries.add(
+        MapEntry(
+          sim.carriers.length == 1 ? 'Bandwidth' : 'Bandwidth (CA)',
+          sim.carriers.length == 1
+              ? '$widths MHz'
+              : '$widths = ${shortMhz(sim.aggregatedBandwidthMhz)} MHz',
+        ),
+      );
+      entries.add(
+        MapEntry(
+          'Carriers',
+          sim.carriers
+              .map(
+                (carrier) =>
+                    '${carrier.bandLabel ?? '?'} '
+                    '${shortMhz(carrier.bandwidthMhz)} MHz',
+              )
+              .join(' · '),
+        ),
+      );
+    }
+    if (sim.qci case final qci?) entries.add(MapEntry('QCI', '$qci'));
+    return entries;
   }
 
   static List<MapEntry<String, String>> qualityFor(
@@ -154,7 +196,8 @@ class ServingView {
     ];
   }
 
-  /// 2175.00 → 2175, 3871.20 → 3871.2 — short enough for a neighbour row.
+  /// 2175.00 → 2175, 3871.20 → 3871.2 — short enough for a neighbour row, and
+  /// for a carrier width (`20000 kHz` → `20`).
   static String shortMhz(double mhz) {
     final text = mhz.toStringAsFixed(2);
     if (text.endsWith('.00')) return text.substring(0, text.length - 3);

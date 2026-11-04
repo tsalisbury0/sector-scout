@@ -75,6 +75,8 @@ object CellSnapshot {
         out["operatorName"] = default?.get("carrierName") ?: ""
         out["networkTypeName"] = default?.get("networkTypeName") ?: "Unknown"
         out["simState"] = default?.get("simState") ?: "UNKNOWN"
+        // Whether the optional privileged reader is up, for the Settings row.
+        out["carrierDetail"] = PrivilegedRadio.status(context)["state"]
         return out
     }
 
@@ -231,6 +233,15 @@ object CellSnapshot {
         m["nrConnected"] = nrState == "CONNECTED" || nrSignal != null
         if (nrSignal != null) m["nrRsrp"] = nrSignal
         m["plmn"] = ownPlmn
+
+        // Carrier detail, when Shizuku is lending its shell identity: one row
+        // per aggregated carrier with its own width, plus the QCI of the data
+        // bearer. Empty without it, and the card simply shows no such rows.
+        val detail = PrivilegedRadio.detail(sub.subscriptionId)
+        if (detail.carriers.isNotEmpty()) {
+            m["carriers"] = CarrierDetail.toMaps(detail)
+        }
+        detail.qci?.let { m["qci"] = it }
 
         if (BuildConfig.DEBUG) {
             Log.d(

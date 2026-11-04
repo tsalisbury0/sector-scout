@@ -27,6 +27,11 @@
     <!-- In-app updates: the downloaded APK is installed with the package
          installer, which Android only allows once this is held. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Carrier detail: band widths per aggregated carrier and QCI live behind
+         hidden telephony APIs. Shizuku lends the app a shell-uid service to read
+         them; this is the permission Shizuku itself grants. Optional: without
+         it the app reads exactly what the public APIs expose. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <!-- Bluetooth sharing: one phone advertises the reading, the other reads
          it. Pre-12 releases gate BLE behind the normal Bluetooth permissions;
@@ -76,6 +81,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Carrier detail: hands over Shizuku's binder if it is running.
+             Protected by INTERACT_ACROSS_USERS_FULL so no other app can read
+             through it. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <!-- Holds the pinned signal notification. Not exported: only this app
              starts it. -->
         <service

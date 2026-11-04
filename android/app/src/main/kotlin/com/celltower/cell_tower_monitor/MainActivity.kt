@@ -27,6 +27,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        // Carrier detail is optional: this only wires Shizuku's listeners, and
+        // does nothing when Shizuku is absent.
+        PrivilegedRadio.attach(applicationContext)
 
         MethodChannel(messenger, METHOD_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -178,6 +181,29 @@ class MainActivity : FlutterActivity() {
                 "backgroundExempt" -> result.success(isBatteryExempt())
                 "backgroundExemptRequest" -> result.success(requestBatteryExemption())
 
+                // Carrier detail through Shizuku. `carrierDetailStatus` is
+                // also the grant entry point: the Settings page asks, then
+                // polls the same call until the state turns ready.
+                "carrierDetailStatus" -> result.success(
+                    PrivilegedRadio.status(applicationContext),
+                )
+                "carrierDetailRequest" -> {
+                    PrivilegedRadio.requestPermission(applicationContext)
+                    result.success(PrivilegedRadio.status(applicationContext))
+                }
+                // Opening Shizuku is how a user starts it over wireless
+                // debugging, so the Settings row can point at it.
+                "carrierDetailOpen" -> result.success(
+                    try {
+                        packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE)
+                            ?.let { startActivity(it) }
+                        true
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Shizuku launch failed: ${error.message}")
+                        false
+                    },
+                )
+
                 else -> result.notImplemented()
             }
         }
@@ -308,6 +334,7 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val TAG = "MainActivity"
+        const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
         const val METHOD_CHANNEL = "cell_tower/monitor"
         const val EVENT_CHANNEL = "cell_tower/stream"
     }
