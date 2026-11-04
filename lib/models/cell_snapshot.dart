@@ -1333,6 +1333,12 @@ class SignalQuality {
 CellTech _techFromNetworkType(int? type) => switch (type) {
   20 => CellTech.nr, // NETWORK_TYPE_NR
   13 => CellTech.lte, // NETWORK_TYPE_LTE
+  // NETWORK_TYPE_LTE_CA, which is the value the radio reports for an LTE
+  // carrier once carrier aggregation is actually running. Without it every
+  // aggregated carrier parsed as unknown technology, so it matched no cell:
+  // the rows lost their frequency and both the anchor and the supplemental
+  // downlink card lost their width exactly while CA was up.
+  19 => CellTech.lte,
   3 || 9 || 10 || 11 || 12 || 15 => CellTech.wcdma,
   1 || 2 || 16 || 17 => CellTech.gsm,
   _ => CellTech.unknown,
