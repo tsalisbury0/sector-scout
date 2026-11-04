@@ -1236,29 +1236,29 @@ class _SimBlock extends StatelessWidget {
           if (paired) ...[
             const _SectionHeading('4G anchor'),
             _DetailCard(
-              rows: ServingView.entries(lte, carriers: sim.carriers),
+              rows: ServingView.entries(lte, sim: sim),
             ),
             const _SectionHeading('5G NR secondary'),
             _DetailCard(
               rows: ServingView.entries(
                 nr,
                 gnbEstimate: sim.nsaGnbEstimate,
-                carriers: sim.carriers,
+                sim: sim,
               ),
             ),
           ] else ...[
             _SectionHeading(lte == null ? '5G NR' : 'Serving cell'),
             _DetailCard(
-              rows: ServingView.entries(serving, carriers: sim.carriers),
+              rows: ServingView.entries(serving, sim: sim),
             ),
           ],
           for (final secondary in sim.lteSecondaries) ...[
-            const _SectionHeading('4G LTE secondary'),
+            const _SectionHeading('4G LTE SDL'),
             _DetailCard(
               rows: ServingView.entries(
                 secondary,
                 fallbackPlmn: lte?.plmn ?? nr?.plmn,
-                carriers: sim.carriers,
+                sim: sim,
               ),
             ),
           ],

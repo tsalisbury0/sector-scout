@@ -906,7 +906,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           // sector and anchor band disappear.
           entries: _servingEntries(
             sim.isNsa && lte != null && nr != null ? lte : sim.serving!,
-            carriers: sim.carriers,
+            sim: sim,
           ),
         ),
         if (sim.isNsa && lte != null && nr != null) ...[
@@ -930,26 +930,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             entries: _servingEntries(
               nr,
               gnbEstimate: sim.nsaGnbEstimate,
-              carriers: sim.carriers,
+              sim: sim,
             ),
           ),
         ],
-        // LTE B29 is a supplemental downlink: it only shows up once it is
-        // aggregated under the primary, and it arrives with no ECI at all, so
-        // there is no eNB or sector to draw. CellMapper shows the same carrier
-        // and the same gap.
+        // An LTE supplemental downlink only shows up once it is aggregated
+        // under the primary, and it arrives with no ECI at all, so there is no
+        // eNB or sector to draw. CellMapper shows the same carrier and the
+        // same gap.
         if (sim.lteSecondaries.isNotEmpty) ...[
           const SizedBox(height: 16),
           _SectionLabel(
-            '${prefix}4G LTE secondary',
+            '${prefix}4G LTE SDL',
             note:
-                'Secondaries are aggregated under the primary LTE cell. Band '
-                '29 is a downlink-only supplemental carrier: the radio reports '
-                'it with a PCI, band and channel but no cell identity, so '
-                'there is no eNB, sector or TAC to show — and no uplink '
-                'frequency, because the band has none. Its MCC/MNC only come '
-                'through while it is carrying data, which is why the PLMN '
-                'falls back to the network the primary cell is registered on.',
+                'Supplemental downlinks are aggregated under the primary LTE '
+                'cell. Every downlink-only LTE band is covered — 29, 32, 67, '
+                '69, 75 and 76 — not only band 29. The radio reports one with a '
+                'PCI, band and channel but no cell identity, so there is no '
+                'eNB, sector or TAC to show, and no uplink frequency, because '
+                'the band has none. Its MCC/MNC only come through while it is '
+                'carrying data, which is why the PLMN falls back to the '
+                'network the primary cell is registered on.',
           ),
           const SizedBox(height: 8),
           for (final secondary in sim.lteSecondaries) ...[
@@ -959,7 +960,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               entries: _servingEntries(
                 secondary,
                 fallbackPlmn: sim.registeredPlmn,
-                carriers: sim.carriers,
+                sim: sim,
               ),
             ),
             const SizedBox(height: 8),
@@ -1048,13 +1049,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     CellTower cell, {
     int? gnbEstimate,
     String? fallbackPlmn,
-    List<RadioCarrier> carriers = const [],
+    SimReading? sim,
   }) =>
       ServingView.entries(
         cell,
         gnbEstimate: gnbEstimate,
         fallbackPlmn: fallbackPlmn,
-        carriers: carriers,
+        sim: sim,
       );
 
   List<MapEntry<String, String>> _qualityEntries(SimReading sim) =>
@@ -1252,8 +1253,8 @@ class SimHeaderCard extends StatelessWidget {
               for (var i = 0; i < sim.lteSecondaries.length; i++)
                 (
                   sim.lteSecondaries.length == 1
-                      ? 'LTE secondary'
-                      : 'LTE secondary ${i + 1}',
+                      ? 'LTE SDL'
+                      : 'LTE SDL ${i + 1}',
                   sim.lteSecondaries[i],
                 ),
             ],

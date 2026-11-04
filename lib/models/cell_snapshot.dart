@@ -959,34 +959,58 @@ class SimReading {
   /// Cells heard but not serving.
   ///
   /// Everything the aggregation card already accounts for is left out: the
-  /// carriers [lteSecondaries] claims, and any cell the privileged reader named
-  /// as a component carrier by PCI. A B29 layer the radio is using is not a
-  /// neighbour, even though it is unregistered and would otherwise be listed.
+  /// carriers [lteSecondaries] claims, and the cell each component carrier is
+  /// assigned. A supplemental downlink the radio is using is not a neighbour,
+  /// even though it is unregistered and would otherwise be listed.
   List<CellTower> get neighbours {
     final secondaries = lteSecondaries;
+    final owned = carrierCells().values.toSet();
     return cells
         .where(
           (cell) =>
               !cell.registered &&
               !secondaries.contains(cell) &&
-              !_isCarrierCell(cell),
+              !owned.contains(cell),
         )
         .toList();
   }
 
-  /// True when this cell is the one feeding a component carrier.
+  /// Each carrier paired with the cell it is coming from.
   ///
-  /// It answers by asking [carrierCell] the same question the aggregation card
-  /// asks, so whatever cell the card is naming is the cell that leaves this
-  /// list — the anchor is excluded by the caller instead, being registered.
-  bool _isCarrierCell(CellTower cell) {
-    for (final carrier in carriers) {
-      if (carrier.tech == cell.tech && carrierCell(carrier) == cell) return true;
+  /// One cell per carrier, and no two carriers on the same frequency: the
+  /// primary component and the secondary components are different carriers, so
+  /// letting two of them name the same cell at 2175 MHz would describe one
+  /// radio twice and put the same frequency beside two different widths. A
+  /// carrier whose PCI the modem reports claims that cell first; the rest take
+  /// the strongest cell on their band that no other carrier has claimed,
+  /// preferring a registered one, which is how the anchor keeps its own cell.
+  Map<RadioCarrier, CellTower> carrierCells() {
+    final assigned = <RadioCarrier, CellTower>{};
+    final taken = <CellTower>{};
+    final usedMhz = <double>{};
+    final ordered = carriers.toList()
+      ..sort((a, b) {
+        final aKnown = (a.pci ?? 0) > 0 ? 0 : 1;
+        final bKnown = (b.pci ?? 0) > 0 ? 0 : 1;
+        if (aKnown != bKnown) return aKnown - bKnown;
+        if (a.tech != b.tech) return a.tech.index - b.tech.index;
+        if (a.bandwidthKhz != b.bandwidthKhz) {
+          return b.bandwidthKhz - a.bandwidthKhz;
+        }
+        return a.band - b.band;
+      });
+    for (final carrier in ordered) {
+      final cell = _claimCell(carrier, taken, usedMhz);
+      if (cell == null) continue;
+      assigned[carrier] = cell;
+      taken.add(cell);
+      final mhz = cell.downlinkMhz;
+      if (mhz != null) usedMhz.add(mhz);
     }
-    return false;
+    return assigned;
   }
 
-  /// The cell a carrier is being received from.
+  /// The cell a carrier is being received from, or null when nothing matches.
   ///
   /// A carrier config names a band and a width, and sometimes a PCI — never a
   /// cell. The PCI it does report is the exact handle, and the scan lists the
@@ -994,20 +1018,65 @@ class SimReading {
   /// that band stands in, since a carrier has to be something the phone can
   /// hear; this S25 reports no PCI at all for its LTE carriers (`pcinull`), so
   /// the band path is the one that carries here.
-  CellTower? carrierCell(RadioCarrier carrier) {
+  CellTower? carrierCell(RadioCarrier carrier) => carrierCells()[carrier];
+
+  /// The carrier taking its width from [cell], when one is assigned to it.
+  RadioCarrier? carrierFor(CellTower cell) {
+    for (final entry in carrierCells().entries) {
+      if (entry.value == cell) return entry.key;
+    }
+    // The card can be drawing a cell the assignment passed over: a modem may
+    // report a carrier whose cell the scan lists separately, or under a band
+    // the table reads differently. Fall back to identity rather than dropping
+    // the width, which is what left these cards blank while CA was reported.
+    final same = carriers
+        .where((carrier) => carrier.tech == cell.tech)
+        .toList();
+    if (same.isEmpty) return null;
+    final pci = cell.pci;
+    if (pci != null && pci > 0) {
+      final byPci = same.where((carrier) => carrier.pci == pci).toList();
+      if (byPci.length == 1) return byPci.single;
+    }
+    for (final band in cellBands(cell)) {
+      final byBand = same.where((carrier) => carrier.band == band).toList();
+      if (byBand.length == 1) return byBand.single;
+    }
+    return same.length == 1 ? same.single : null;
+  }
+
+  /// Claims one cell for [carrier], skipping cells and frequencies already
+  /// spoken for.
+  CellTower? _claimCell(
+    RadioCarrier carrier,
+    Set<CellTower> taken,
+    Set<double> usedMhz,
+  ) {
     final pci = carrier.pci;
     if (pci != null && pci > 0) {
       for (final cell in cells) {
-        if (cell.tech == carrier.tech && cell.pci == pci) return cell;
+        if (cell.tech != carrier.tech) continue;
+        if (cell.pci != pci) continue;
+        if (taken.contains(cell)) continue;
+        return cell;
       }
     }
     if (carrier.band <= 0) return null;
     CellTower? best;
     for (final cell in cells) {
       if (cell.tech != carrier.tech) continue;
+      if (taken.contains(cell)) continue;
       if (!cellBands(cell).contains(carrier.band)) continue;
-      if (cell.downlinkMhz == null) continue;
-      if (best == null || (cell.dbm ?? -200) > (best.dbm ?? -200)) best = cell;
+      final mhz = cell.downlinkMhz;
+      if (mhz == null || usedMhz.contains(mhz)) continue;
+      if (best == null) {
+        best = cell;
+        continue;
+      }
+      final better = best.registered != cell.registered
+          ? cell.registered
+          : (cell.dbm ?? -200) > (best.dbm ?? -200);
+      if (better) best = cell;
     }
     return best;
   }

@@ -375,7 +375,7 @@ class DashboardHtml {
           _detail(
             ServingView.entries(
               paired ? lte : sim.serving!,
-              carriers: sim.carriers,
+              sim: sim,
             ),
           ),
         );
@@ -401,7 +401,7 @@ class DashboardHtml {
               ServingView.entries(
                 nr,
                 gnbEstimate: sim.nsaGnbEstimate,
-                carriers: sim.carriers,
+                sim: sim,
               ),
             ),
           );
@@ -421,30 +421,31 @@ class DashboardHtml {
         }
       }
 
-      // LTE secondary carriers: band 29's supplemental downlink, and any extra
-      // layer of carrier aggregation the radio reports alongside the primary.
+      // LTE supplemental downlinks: any downlink-only band the radio is
+      // aggregating under the primary.
       if (sim.lteSecondaries.isNotEmpty) {
-        out.write('<div class="h2">${_esc(prefix)}4G LTE secondary</div>');
+        out.write('<div class="h2">${_esc(prefix)}4G LTE SDL</div>');
         for (final secondary in sim.lteSecondaries) {
           out.write(
             _detail(
               ServingView.entries(
                 secondary,
                 fallbackPlmn: sim.registeredPlmn,
-                carriers: sim.carriers,
+                sim: sim,
               ),
             ),
           );
         }
         out.write(
           _foot(
-            'Secondaries are aggregated under the primary LTE cell. Band 29 is '
-            'a downlink-only supplemental carrier: the radio reports it with a '
-            'PCI, band and channel but no cell identity, so there is no eNB, '
-            'sector or TAC to show — and no uplink frequency, because the band '
-            'has none. Its MCC/MNC only come through while it is carrying '
-            'data, which is why the PLMN falls back to the network the primary '
-            'cell is registered on.',
+            'Supplemental downlinks are aggregated under the primary LTE cell. '
+            'Every downlink-only LTE band is covered — 29, 32, 67, 69, 75 and '
+            '76 — not just band 29. The radio reports one with a PCI, band and '
+            'channel but no cell identity, so there is no eNB, sector or TAC to '
+            'show, and no uplink frequency, because the band has none. Its '
+            'MCC/MNC only come through while it is carrying data, which is why '
+            'the PLMN falls back to the network the primary cell is registered '
+            'on.',
           ),
         );
       }

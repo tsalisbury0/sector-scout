@@ -25,7 +25,7 @@ class ServingView {
     CellTower cell, {
     int? gnbEstimate,
     String? fallbackPlmn,
-    List<RadioCarrier> carriers = const [],
+    SimReading? sim,
   }) {
     final entries = <MapEntry<String, String>>[];
 
@@ -87,7 +87,7 @@ class ServingView {
     // The width of *this* carrier, when the privileged reader named it. The
     // band list on a cell says nothing about how wide the carrier is, so
     // without the reader the row is absent rather than guessed.
-    if (bandwidthFor(cell, carriers) case final bandwidth?) {
+    if (bandwidthFor(cell, sim) case final bandwidth?) {
       entries.add(MapEntry('Bandwidth', bandwidth));
     }
     // Band 106's build shows its own channel numbers rather than the band-8
@@ -187,30 +187,14 @@ class ServingView {
 
   /// How wide the carrier [cell] sits on, when the reader named it.
   ///
-  /// PCI is the identity that survives aggregation: once a B29 layer or an NR
-  /// leg attaches, the cell's band list stops describing only the anchor, but
-  /// PCI still names the same radio. Band is the fallback, and a lone carrier
-  /// of the technology the last one — an NSA leg usually hides its band, and
-  /// then that single NR carrier is the answer.
-  static String? bandwidthFor(CellTower cell, List<RadioCarrier> carriers) {
-    final same = carriers.where((carrier) => carrier.tech == cell.tech).toList();
-    final match = matchCarrier(cell, same);
+  /// One carrier per cell is decided once for the whole slot, in
+  /// [SimReading.carrierCells], so no two carriers can claim the same cell or
+  /// the same frequency. That is what used to make a width vanish: with two
+  /// carriers on one band and no PCI to separate them, neither match was
+  /// unique, so both cards dropped the row while CA was being reported.
+  static String? bandwidthFor(CellTower cell, SimReading? sim) {
+    final match = sim?.carrierFor(cell);
     return match == null ? null : '${shortMhz(match.bandwidthMhz)} MHz';
-  }
-
-  /// The carrier that *is* [cell], out of the ones on its technology.
-  static RadioCarrier? matchCarrier(CellTower cell, List<RadioCarrier> same) {
-    if (same.isEmpty) return null;
-    final pci = cell.pci;
-    if (pci != null && pci > 0) {
-      final byPci = same.where((carrier) => carrier.pci == pci).toList();
-      if (byPci.length == 1) return byPci.single;
-    }
-    for (final band in cellBands(cell)) {
-      final byBand = same.where((carrier) => carrier.band == band).toList();
-      if (byBand.length == 1) return byBand.single;
-    }
-    return same.length == 1 ? same.single : null;
   }
 
   static String _techLabel(CellTech tech) => switch (tech) {
