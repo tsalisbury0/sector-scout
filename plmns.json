@@ -41,5 +41,8 @@
   {"mcc": "334", "mnc": "140", "brand": "Altán Redes", "nrBits": "22/14"},
   {"mcc": "724", "mnc": "02", "brand": "Vivo", "nrBits": "24/12"},
   {"mcc": "724", "mnc": "05", "brand": "Claro", "nrBits": "24/12"},
-  {"mcc": "724", "mnc": "04", "brand": "TIM", "nrBits": "24/12"}
+  {"mcc": "724", "mnc": "04", "brand": "TIM", "nrBits": "24/12"},
+  {"mcc": "730", "mnc": "01", "brand": "Entel", "nrBits": "22/14"},
+  {"mcc": "730", "mnc": "02", "brand": "Movistar", "nrBits": "22/14"},
+  {"mcc": "730", "mnc": "09", "brand": "WOM", "nrBits": "22/14"}
 ]
