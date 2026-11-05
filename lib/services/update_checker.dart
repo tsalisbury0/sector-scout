@@ -14,7 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// reinstall of itself, and to know this build is a beta — the stable of the
 /// same version numbers is then still offered as an update, since moving off
 /// the prerelease matters even when the numbers match.
-const String kBuildTag = 'v1.0.5-beta';
+const String kBuildTag = 'v1.1.0-beta';
 
 /// The version string of this build, used where Android's versionName is not
 /// reachable (the desktop has no platform to ask).

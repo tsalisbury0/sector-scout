@@ -394,6 +394,63 @@ def is_sdl_lte(cell: dict) -> bool:
     return bool(plan and plan.get("mode") == "SDL")
 
 
+# --- Shizuku carrier detail ------------------------------------------------
+# A phone with the privileged reader bound sends its physical carriers in
+# `carriers`: the only reading that says how wide each one is and which of them
+# are aggregated. Each entry is the app's own JSON — `net`, `band`, `bw`, `pci`
+# — so the console reads exactly what the phone card reads, without a second
+# parser to drift out of step.
+
+
+def carrier_tech(carrier: dict) -> str:
+    """`NR` or `LTE` for one carrier, from the NETWORK_TYPE it was read with."""
+    return "NR" if _int_or(carrier.get("net")) == 20 else "LTE"
+
+
+def mhz_text(khz: int) -> str:
+    """A carrier width in MHz, without a trailing zero: 10, not 10.00."""
+    text = f"{khz / 1000:.2f}"
+    if text.endswith(".00"):
+        return text[:-3]
+    return text[:-1] if text.endswith("0") else text
+
+
+def carrier_rows(carriers: list[dict]) -> list[tuple[str, str]]:
+    """One row per component carrier, then the width across all of them.
+
+    Same shape as the phone's own carrier card: band and width on the row, the
+    PCI when the framework named one, and an aggregate row underneath. A
+    downlink-only band says SDL, because it has no uplink to pair with.
+    """
+    rows: list[tuple[str, str]] = []
+    total = 0
+    for carrier in carriers:
+        band = _int_or(carrier.get("band"))
+        tech = carrier_tech(carrier)
+        width = _int_or(carrier.get("bw")) or 0
+        total += width
+        if band:
+            label = band_name(band, tech)
+            plan = LTE_BANDS.get(band) if tech == "LTE" else None
+            if plan and plan.get("mode") == "SDL":
+                label = f"{label} SDL"
+        else:
+            label = "band not reported"
+        width_text = f"{mhz_text(width)} MHz" if width else "width not reported"
+        pci = _int_or(carrier.get("pci"))
+        rows.append(
+            (f"{label} · {width_text}", "—" if pci is None else f"PCI {pci}")
+        )
+    count = len(carriers)
+    rows.append(
+        (
+            "Aggregate",
+            f"{count} carrier{'s' if count != 1 else ''} · {mhz_text(total)} MHz",
+        )
+    )
+    return rows
+
+
 def lte_secondaries(cells: list[dict]) -> list[dict]:
     """LTE carriers aggregated under the primary, the way the app counts them.
 
@@ -467,9 +524,16 @@ def badge_for(sim: dict, cells: list[dict]) -> str:
     if lte is None:
         return "—"
     plmn = plmn_of(lte) or str(sim.get("plmn") or "")
+    # The reader's carriers are the strongest evidence of live CA: it labels an
+    # aggregated LTE carrier with NETWORK_TYPE_LTE_CA (19), which the cell list
+    # cannot show when the platform reports no second cell of its own.
+    carriers = [c for c in (sim.get("carriers") or []) if isinstance(c, dict)]
+    aggregating = lte_secondaries(cells) or any(
+        _int_or(carrier.get("net")) == 19 for carrier in carriers
+    )
     if override == "LTE_ADVANCED_PRO":
         return "5GE" if plmn in ATT_BADGE_PLMNS else "LTE+"
-    if lte_secondaries(cells) or override == "LTE_CA":
+    if aggregating or override == "LTE_CA":
         return "LTE+"
     return "LTE"
 
@@ -3662,6 +3726,7 @@ class DesktopApp(tk.Tk):
     # -- one SIM, in the app's own card layout -----------------------------
     def _sim_card(self, parent: tk.Frame, sim: dict, updated: float | None) -> None:
         cells = [c for c in (sim.get("cells") or []) if isinstance(c, dict)]
+        carriers = [c for c in (sim.get("carriers") or []) if isinstance(c, dict)]
         registered = [c for c in cells if c.get("registered")]
         lte = next(
             (c for c in registered if c.get("type") == "LTE" and not is_sdl_lte(c)),
@@ -3773,6 +3838,9 @@ class DesktopApp(tk.Tk):
                         fallback_plmn=plmn_of(lte) or plmn_of(nr),
                     ),
                 )
+            if carriers:
+                heading("Carrier aggregation")
+                self._detail_card(body, carrier_rows(carriers))
             heading("Radio quality")
             self._detail_card(body, quality_entries(cells))
 
@@ -3973,7 +4041,7 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.1.0-beta"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )

@@ -9,7 +9,7 @@
 ; console replaces it in place rather than leaving two Sector Scouts behind.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.3"
+  #define AppVersion "1.1.0-beta"
 #endif
 
 #define AppName "Sector Scout"
