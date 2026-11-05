@@ -494,6 +494,41 @@ def heard_neighbours(cells: list[dict]) -> list[dict]:
     ]
 
 
+FR2_BANDS = frozenset({257, 258, 259, 260, 261, 262})
+
+
+def nr_advanced_label(plmn: str) -> str | None:
+    """The NR Advanced badge for a PLMN, or None when it has no house style."""
+    if plmn in ATT_BADGE_PLMNS:
+        return "5G+"
+    if plmn == "310260":
+        return "5GUC"
+    if plmn == VERIZON_PLMN:
+        return "5GUW"
+    return None
+
+
+def is_high_band_nr(cell: dict, sim: dict) -> bool:
+    """True when the NR leg is on FR2: millimetre wave, above 24.25 GHz.
+
+    The ARFCN is the authority when the modem reports one; the band covers the
+    readings where it does not, including the carriers the Shizuku reader
+    exposed when the cell itself had no band.
+    """
+    channel = _int_or(cell.get("arfcn"))
+    if channel is not None and channel >= 2016667:
+        return True
+    if band_number(cell) in FR2_BANDS:
+        return True
+    if any(_int_or(band) in FR2_BANDS for band in (cell.get("bands") or [])):
+        return True
+    return any(
+        _int_or(carrier.get("band")) in FR2_BANDS
+        for carrier in (sim.get("carriers") or [])
+        if isinstance(carrier, dict)
+    )
+
+
 def badge_for(sim: dict, cells: list[dict]) -> str:
     """The technology badge, mirroring `SignalIcon.labelFor` on the phone.
 
@@ -513,13 +548,14 @@ def badge_for(sim: dict, cells: list[dict]) -> str:
 
     if nr is not None:
         plmn = plmn_of(nr) or plmn_of(lte) or str(sim.get("plmn") or "")
-        if override == "NR_ADVANCED":
-            if plmn in ATT_BADGE_PLMNS:
-                return "5G+"
-            if plmn == "310260":
-                return "5GUC"
-            if plmn == VERIZON_PLMN:
-                return "5GUW"
+        advanced = nr_advanced_label(plmn)
+        if advanced is not None:
+            if override == "NR_ADVANCED":
+                return advanced
+            # Samsung still reports plain NR_SA on millimetre wave, where the
+            # network keeps its Advanced badge.
+            if is_high_band_nr(nr, sim):
+                return advanced
         return "5G"
     if lte is None:
         return "—"
@@ -4041,10 +4077,83 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "1.1.0-beta2"
+APP_VERSION = "1.1.1-beta"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )
+
+
+def version_key(tag: str) -> tuple[int, int, int, int, int]:
+    """Where a release tag sorts: numbers, stable-above-beta, beta number.
+
+    `1.1.0-beta` and `1.1.0-beta2` both reduce to 1.1.0, so the number after
+    the word is what tells a beta bump from the build already installed.
+    """
+    text = tag.lstrip("v")
+    core = text.split("-")[0].split("+")[0]
+    numbers = [int(part) for part in core.split(".") if part.isdigit()][:3]
+    while len(numbers) < 3:
+        numbers.append(0)
+    lowered = text.lower()
+    ordinal = 0
+    if "beta" in lowered:
+        tail = lowered.split("beta", 1)[1].lstrip(".-_")
+        digits = ""
+        for character in tail:
+            if character.isdigit():
+                digits += character
+            else:
+                break
+        ordinal = int(digits) if digits else 0
+    return (
+        numbers[0],
+        numbers[1],
+        numbers[2],
+        0 if "-" in text else 1,
+        ordinal,
+    )
+
+
+def _download_console_zip(tag: str) -> Path:
+    """Fetches this console's own release zip into Downloads."""
+    version = tag.lstrip("v")
+    url = (
+        "https://github.com/tsalisbury0/sector-scout/releases/download/"
+        f"{tag}/sector-scout-desktop-{version}.zip"
+    )
+    folder = Path.home() / "Downloads"
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / f"sector-scout-desktop-{version}.zip"
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "sector-scout-console-update"}
+    )
+    with urllib.request.urlopen(request, timeout=90) as response:
+        target.write_bytes(response.read())
+    return target
+
+
+def _install_console_zip(archive: Path) -> bool:
+    """Replaces this script with the copy inside the release zip."""
+    import zipfile
+
+    target = Path(__file__).resolve()
+    with zipfile.ZipFile(archive) as bundle:
+        member = next(
+            (
+                name
+                for name in bundle.namelist()
+                if name.endswith("sector_scout_desktop.py")
+            ),
+            None,
+        )
+        if member is None:
+            return False
+        code = bundle.read(member)
+    if not code.strip():
+        return False
+    target.with_suffix(".py.bak").write_bytes(target.read_bytes())
+    target.write_bytes(code)
+    return True
 
 
 def _updates_pref() -> Path:
@@ -4078,31 +4187,34 @@ def _start_update_check(app) -> None:
                 pass
             best = None
             for release in releases:
-                if release.get("draft") or release.get("prerelease"):
+                if release.get("draft"):
                     continue
                 tag = release.get("tag_name") or ""
-                numbers = tuple(
-                    part for part in tag.lstrip("v").split("-")[0].split(".")
-                    if part.isdigit()
-                )
-                if not numbers or tag == f"v{APP_VERSION}" or tag == skip:
+                # Betas are this console's own channel now, and the number
+                # after the word is what makes 1.1.0-beta2 newer than
+                # 1.1.0-beta; both reduce to 1.1.0 on their own.
+                key = version_key(tag)
+                if not tag or tag == f"v{APP_VERSION}" or tag == skip:
                     continue
-                if best is None or numbers > best[0]:
-                    best = (numbers, tag, release.get("html_url", ""))
+                if best is None or key > best[0]:
+                    best = (key, tag, release.get("html_url", ""))
 
             def ask() -> None:
                 if best is None:
                     return
-                _tag, tag_name, page = best
+                _key, tag_name, page = best
                 answer = messagebox.askyesno(
                     "Sector Scout update",
                     f"{tag_name} is available (this console: v{APP_VERSION}).\n\n"
-                    "Open the release page to download it?",
+                    "Download and install it now?",
                 )
-                if answer and page:
-                    import webbrowser
-
-                    webbrowser.open(page)
+                if answer:
+                    try:
+                        archive = _download_console_zip(tag_name)
+                        installed = _install_console_zip(archive)
+                    except Exception as error:  # network, disk, or a bad zip
+                        messagebox.showerror("Update failed", str(error))
+                        return
                     pref = _updates_pref()
                     try:
                         json.dump(
@@ -4111,6 +4223,19 @@ def _start_update_check(app) -> None:
                         )
                     except OSError:
                         pass
+                    if installed:
+                        messagebox.showinfo(
+                            "Sector Scout update",
+                            f"{tag_name} is installed. The console will restart.",
+                        )
+                        import sys as _sys
+
+                        os.execv(
+                            _sys.executable,
+                            [_sys.executable, str(Path(__file__).resolve())],
+                        )
+                    else:
+                        os.startfile(archive.parent)
                 elif answer is False and page:
                     pref = _updates_pref()
                     try:

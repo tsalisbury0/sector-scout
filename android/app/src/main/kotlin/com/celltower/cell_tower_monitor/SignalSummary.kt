@@ -209,6 +209,7 @@ object SignalSummary {
                 nrAttached = nr != null || nrConnected(sim),
                 aggregated = aggregated,
                 fiveG = fiveG,
+                highBand = highBandOf(nr),
             )
         }
 
@@ -273,6 +274,24 @@ object SignalSummary {
     /** The platform's word on the NR leg, for a modem hiding the cell. */
     private fun nrConnected(sim: Map<String, Any?>): Boolean =
         sim["nrState"] == "CONNECTED"
+
+    /**
+     * True for a standalone NR leg on FR2 (millimetre wave).
+     *
+     * Samsung keeps reporting plain `NR_SA` there, so the override cannot tell
+     * a 100 MHz C-band link from mmWave; the carrier's Advanced badge is still
+     * what the network calls an mmWave link.
+     */
+    private fun highBandOf(cell: Map<String, Any?>?): Boolean {
+        if (cell == null || cell.tech() != "NR") return false
+        val arfcn = (cell["arfcn"] as? Number)?.toLong()
+            ?: (cell["arfcn"] as? String)?.toLongOrNull()
+        if (arfcn != null && arfcn >= 2016667) return true
+        val bands = (cell["bands"] as? List<*>)
+            ?.mapNotNull { (it as? Number)?.toInt() }
+            .orEmpty() + listOfNotNull((cell["band"] as? Number)?.toInt())
+        return bands.any { it in 257..262 }
+    }
 
     private fun carrierOf(
         sim: Map<String, Any?>,

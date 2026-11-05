@@ -14,11 +14,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// reinstall of itself, and to know this build is a beta — the stable of the
 /// same version numbers is then still offered as an update, since moving off
 /// the prerelease matters even when the numbers match.
-const String kBuildTag = 'v1.1.0-beta2';
+const String kBuildTag = 'v1.1.1-beta';
 
 /// The version string of this build, used where Android's versionName is not
 /// reachable (the desktop has no platform to ask).
-const String kVersionText = '1.0.5';
+const String kVersionText = '1.1.1-beta';
 
 /// Where releases are listed. The repo is public, so this reads without a
 /// token: the unauthenticated 60-queries-an-hour cap suits a once-per-launch
@@ -78,9 +78,11 @@ class UpdateInfo {
     required this.major,
     required this.minor,
     required this.patch,
+    required this.beta,
     required this.pageUrl,
     required this.apkUrl,
     required this.windowsUrl,
+    required this.setupUrl,
   });
 
   final String tag;
@@ -89,6 +91,10 @@ class UpdateInfo {
   final int major;
   final int minor;
   final int patch;
+
+  /// The number after the word `beta`: 0 for `-beta`, 2 for `-beta2`, 10 for
+  /// `-beta10`. Without it a beta bump looked like the build already installed.
+  final int beta;
   final String pageUrl;
 
   /// The APK asset on the release, when there is one.
@@ -97,12 +103,18 @@ class UpdateInfo {
   /// The Windows app zip, when there is one.
   final String? windowsUrl;
 
-  /// `1.0.2` with a beta marker, for display.
+  /// The Inno Setup installer, which is what the desktop app applies.
+  final String? setupUrl;
+
+  /// `1.0.2`, or `1.1.1 (beta2)`, for display.
   String get versionText =>
-      '$major.$minor.$patch${prerelease ? ' (beta)' : ''}';
+      '$major.$minor.$patch${prerelease ? ' (beta${beta > 0 ? beta : ''})' : ''}';
 
   /// Upward sort order of `a.b.c`.
   int get order => ((major * 100) + minor) * 100 + patch;
+
+  /// Where this release sorts, beta tail included.
+  int get rank => releaseRank(tag);
 }
 
 class UpdateChecker {
@@ -119,6 +131,9 @@ class UpdateChecker {
   static final ValueNotifier<bool> betas = ValueNotifier(false);
 
   static String _skipTag = '';
+
+  /// One download at a time: a check that lands twice must not start two.
+  static bool _installing = false;
 
   /// Wakes the service up: reads what the user last chose, then checks once.
   /// A failure here is fine — the banner shows it and a check can be redone.
@@ -167,15 +182,12 @@ class UpdateChecker {
       for (final release in releases) {
         if (betas.value == false && release.prerelease) continue;
         if (release.tag == kBuildTag || release.tag == _skipTag) continue;
-        // Same version numbers of this build's release is this build under
-        // another angle (or an alias) — never offer it.
-        if (release.order == current.order &&
-            release.prerelease == current.prerelease) {
+        // This build's own release under another angle (or an alias) is never
+        // an update: equal rank means equal version, beta tail included.
+        if (release.rank == current.rank) {
           continue;
         }
-        if (best == null ||
-            release.order > best.order ||
-            (release.order == best.order && best.prerelease && !release.prerelease)) {
+        if (best == null || release.rank > best.rank) {
           best = release;
         }
       }
@@ -186,20 +198,29 @@ class UpdateChecker {
       // A newer number is always an offer. The same numbers are one only when
       // this build is a beta and the release is its stable — moving off the
       // prerelease matters even without a number change.
-      final newer = best.order > current.order ||
-          (best.order == current.order && best.prerelease == false && _isBetaBuild());
-      update.value = newer ? UpdateAvailable(best) : null;
+      final newer = best.rank > current.rank;
+      if (!newer) {
+        update.value = null;
+        return;
+      }
+      update.value = UpdateAvailable(best);
+      // On the desktop an update is applied, not just announced: the installer
+      // replaces this build, and a running exe cannot swap its own files.
+      if (!kIsWeb && !Platform.isAndroid && best.setupUrl != null) {
+        unawaited(install(best));
+      }
     } catch (error) {
       update.value = UpdateFailed('Update check failed: $error');
     }
   }
 
   /// Runs the update for this platform: Android takes the APK, the desktop
-  /// takes the app zip. A running exe cannot replace itself, so the desktop
-  /// download lands in Downloads and is opened from there.
+  /// takes the installer and runs it. A running exe cannot replace itself, so
+  /// the download lands in Downloads and Inno closes this build as it installs.
   static Future<void> install(UpdateInfo info) async {
+    if (_installing) return;
     final android = !kIsWeb && Platform.isAndroid;
-    final url = android ? info.apkUrl : info.windowsUrl;
+    final url = android ? info.apkUrl : (info.setupUrl ?? info.windowsUrl);
     if (url == null) {
       // Nothing this platform can use: the release page is the way in.
       unawaited(
@@ -211,6 +232,7 @@ class UpdateChecker {
       update.value = null;
       return;
     }
+    _installing = true;
     try {
       final dir = android
           ? await getApplicationSupportDirectory()
@@ -218,22 +240,38 @@ class UpdateChecker {
                 await getApplicationSupportDirectory();
       final name = android
           ? 'sector-scout-${info.tag}.apk'
-          : 'sector-scout-${info.tag}.zip';
+          : (url == info.setupUrl
+              ? 'Sector Scout Setup ${info.tag}.exe'
+              : 'sector-scout-${info.tag}.zip');
       final file = File('${dir.path}${Platform.pathSeparator}$name');
       update.value = UpdateDownloading(info, 0);
       await _download(url, file, info);
       update.value = UpdateReady(info, file.path);
+      if (!kIsWeb &&
+          Platform.isWindows &&
+          file.path.toLowerCase().endsWith('.exe')) {
+        await openReady(file.path);
+      }
     } catch (error) {
       update.value = UpdateFailed('Download failed: $error');
+    } finally {
+      _installing = false;
     }
   }
 
   /// Acts on a downloaded update: Android hands the APK to the package
-  /// installer, the desktop selects the zip in Explorer.
+  /// installer; on Windows the installer runs, and anything else is revealed
+  /// in Explorer.
   static Future<bool> openReady(String path) async {
     if (!kIsWeb && Platform.isAndroid) return installApk(path);
     if (!kIsWeb && Platform.isWindows) {
       try {
+        if (path.toLowerCase().endsWith('.exe')) {
+          // Detached, so the installer outlives this process — it has to
+          // replace the files this app is running from.
+          await Process.start(path, const [], mode: ProcessStartMode.detached);
+          return true;
+        }
         // explorer takes the switch and the path as one argument.
         await Process.run('explorer.exe', ['/select,$path']);
         return true;
@@ -269,8 +307,6 @@ class UpdateChecker {
     }
     return kVersionText;
   }
-
-  static bool _isBetaBuild() => kBuildTag.contains('-');
 
   /// The feature's own little preferences file, kept next to the app.
   static Future<File?> _prefFile() async {
@@ -366,6 +402,7 @@ class _Release extends UpdateInfo {
           major: _parts(release, 0),
           minor: _parts(release, 1),
           patch: _parts(release, 2),
+          beta: _betaNumberOf(release['tag_name'] as String? ?? ''),
           pageUrl: release['html_url'] as String? ?? '',
           apkUrl: _asset(release, (name) => name.toLowerCase().endsWith('.apk')),
           windowsUrl: _asset(
@@ -373,6 +410,13 @@ class _Release extends UpdateInfo {
             (name) {
               final lower = name.toLowerCase();
               return lower.contains('windows') && lower.endsWith('.zip');
+            },
+          ),
+          setupUrl: _asset(
+            release,
+            (name) {
+              final lower = name.toLowerCase();
+              return lower.contains('setup') && lower.endsWith('.exe');
             },
           ),
         );
@@ -399,24 +443,40 @@ class _Release extends UpdateInfo {
   }
 }
 
-/// A version string like `1.0.2` or `1.0.2-beta` reduced to its numbers plus
-/// whether it is a prerelease.
+/// Sort key for a release tag: the numbers, then stable-above-beta, then the
+/// number after the word `beta`.
+///
+/// `v1.1.0-beta` and `v1.1.0-beta2` both reduce to `1.1.0`, which is why a
+/// beta bump used to look like the build already installed. The tail is the
+/// beta's own build number: 0 for `-beta`, 2 for `-beta2`, 10 for `-beta10`.
+/// A stable release of the same numbers outranks all of them.
+int releaseRank(String tag) {
+  final clean = tag.replaceFirst(RegExp('^v'), '');
+  final core = clean.split(RegExp('[-+]')).first;
+  final numbers = core.split('.');
+  int at(int index) =>
+      index < numbers.length ? int.tryParse(numbers[index]) ?? 0 : 0;
+  final order = ((at(0) * 100) + at(1)) * 100 + at(2);
+  final beta = _betaNumberOf(clean);
+  final prerelease = clean.contains('-');
+  // The tail is wide enough that no beta collides with the next stable: a
+  // stable 1.1.0 sorts below 1.1.1-beta rather than level with it.
+  return order * 1000000 + (prerelease ? beta : 999999);
+}
+
+/// The number behind the word `beta` in a tag, or 0 when it names none.
+int _betaNumberOf(String tag) {
+  final match =
+      RegExp(r'beta[._-]?(\d+)', caseSensitive: false).firstMatch(tag);
+  if (match == null) return 0;
+  return int.tryParse(match.group(1) ?? '') ?? 0;
+}
+
+/// A version string reduced to where it sorts.
 class _Version {
-  const _Version(this.order, this.prerelease);
+  const _Version(this.rank);
 
-  final int order;
-  final bool prerelease;
+  final int rank;
 }
 
-_Version _tripleOf(String text) {
-  final parts = text
-      .replaceFirst(RegExp('^v'), '')
-      .split(RegExp('[-+]'));
-  final numbers = parts.first.split('.');
-  final order =
-      ((int.tryParse(numbers[0]) ?? 0) * 100 +
-              (numbers.length > 1 ? int.tryParse(numbers[1]) ?? 0 : 0)) *
-          100 +
-          (numbers.length > 2 ? int.tryParse(numbers[2]) ?? 0 : 0);
-  return _Version(order, parts.length > 1 && parts[1].isNotEmpty);
-}
+_Version _tripleOf(String text) => _Version(releaseRank(text));

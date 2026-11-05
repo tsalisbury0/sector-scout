@@ -29,6 +29,7 @@ String? techBadgeLabel({
   required String? plmn,
   required bool nrAttached,
   bool aggregated = false,
+  bool highBand = false,
 }) {
   final codes = plmn?.replaceAll('-', '');
   if (nrAttached) {
@@ -43,6 +44,14 @@ String? techBadgeLabel({
       if (codes == _verizon) return '5GUW';
       // NR Advanced on a network with no house style.
       return '5G';
+    }
+    // Standalone on millimetre wave: the platform still says plain `NR_SA`,
+    // so a carrier's Advanced badge would otherwise vanish the moment the
+    // phone moves off NSA — the one place it is most visible on the status
+    // bar. Only a network the list tags gets a badge; everyone else stays 5G.
+    if (highBand) {
+      final tagged = SignalQuality.fiveGFor(codes);
+      if (tagged != null) return tagged;
     }
     return '5G';
   }
@@ -88,6 +97,7 @@ String? badgeForSim(SimReading sim) {
     // own NR state, where a CONNECTED leg with no cell exposed is still 5G.
     nrAttached: sim.nrServing != null || sim.nrConnected,
     aggregated: sim.lteAggregated,
+    highBand: sim.nrHighBand,
   );
   // An eMTC carrier is an LTE radio and nothing more, so the tag wins over the
   // aggregation marker — which Android would otherwise report on the same

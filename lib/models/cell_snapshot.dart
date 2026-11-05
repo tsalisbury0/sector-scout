@@ -238,6 +238,17 @@ class CellTower {
     return 24250.08 + (channel - 2016667) * 0.06;
   }
 
+  /// True for an NR cell on FR2: millimetre wave, above 24.25 GHz.
+  ///
+  /// The frequency is the authority when the modem reports an ARFCN; the FR2
+  /// bands cover the readings where it does not.
+  bool get isHighBandNr {
+    if (tech != CellTech.nr) return false;
+    final mhz = frequencyMhz;
+    if (mhz != null) return mhz >= 24250;
+    return bands.any((band) => band >= 257 && band <= 262);
+  }
+
   /// NR carrier block, inferred from the ARFCN (preferred) or the band.
   NrCarrier get nrCarrier {
     if (tech != CellTech.nr) return NrCarrier.unknown;
@@ -795,6 +806,17 @@ class SimReading {
 
   /// True when the platform says the NR leg is connected, cell or no cell.
   bool get nrConnected => nrState == 'CONNECTED' || nrSignal;
+
+  /// True when the NR leg is on FR2 (millimetre wave).
+  ///
+  /// Samsung keeps reporting plain `NR_SA` there, so the badge cannot tell a
+  /// 100 MHz C-band link from mmWave by the override alone. The carriers the
+  /// reader exposes count too: they name the band even when the cell does not.
+  bool get nrHighBand {
+    final nr = nrServing;
+    if (nr != null && nr.isHighBandNr) return true;
+    return nrCarriers.any((carrier) => carrier.band >= 257 && carrier.band <= 262);
+  }
 
   String get label => 'SIM ${slotIndex + 1}';
 

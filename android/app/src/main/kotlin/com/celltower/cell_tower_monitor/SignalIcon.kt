@@ -53,22 +53,24 @@ object SignalIcon {
         nrAttached: Boolean,
         aggregated: Boolean = false,
         fiveG: Map<String, String> = emptyMap(),
+        highBand: Boolean = false,
     ): String? {
         if (nrAttached) {
+            // The operator list's own `fiveG` tag wins over the built-in
+            // brands: it is the only way a network outside these three, or a
+            // brand that renames its badge, reaches the shade. The list keys
+            // PLMNs with the dash, a cell identity reports them without one,
+            // so both spellings are tried.
+            fun taggedLabel(): String? {
+                if (fiveG.isEmpty() || plmn == null) return null
+                val codes = plmn.replace("-", "")
+                val dashed = "${codes.take(3)}-${codes.drop(3)}"
+                return fiveG[codes] ?: fiveG[dashed] ?: fiveG[plmn]
+            }
             if (override == "NR_ADVANCED") {
-                val codes = plmn?.replace("-", "")
-                // The operator list's own `fiveG` tag wins over the built-in
-                // brands: it is the only way a network outside these three,
-                // or a brand that renames its badge, reaches the shade. The
-                // list keys PLMNs with the dash, a cell identity reports them
-                // without one, so both spellings are tried.
-                fun taggedLabel(): String? {
-                    if (fiveG.isEmpty() || codes == null) return null
-                    val dashed = "${codes.take(3)}-${codes.drop(3)}"
-                    return fiveG[codes] ?: fiveG[dashed]
-                }
                 val tagged = taggedLabel()
                 if (!tagged.isNullOrBlank()) return tagged
+                val codes = plmn?.replace("-", "")
                 return when {
                     codes != null && attPlmns.contains(codes) -> "5G+"
                     codes == tMobile -> "5GUC"
@@ -76,6 +78,12 @@ object SignalIcon {
                     // NR Advanced on a network with no house style.
                     else -> "5G"
                 }
+            }
+            // Standalone on millimetre wave: the platform still says plain
+            // NR_SA, so the Advanced badge has to come from the list.
+            if (highBand) {
+                val tagged = taggedLabel()
+                if (!tagged.isNullOrBlank()) return tagged
             }
             return "5G"
         }

@@ -458,5 +458,43 @@ void main() {
         '5G',
       );
     });
+
+    test('standalone mmWave keeps the Advanced badge', () {
+      SignalQuality.setFiveGs(const {'311-480': '5GUW'});
+      addTearDown(() => SignalQuality.setFiveGs(const {}));
+
+      // Samsung says plain NR_SA on mmWave; the network still calls it UW.
+      expect(
+        techBadgeLabel(
+          tech: 'NR',
+          override: 'NR_SA',
+          plmn: '311-480',
+          nrAttached: true,
+          highBand: true,
+        ),
+        '5GUW',
+      );
+      // The same SA link on C-band is not an Advanced claim.
+      expect(
+        techBadgeLabel(
+          tech: 'NR',
+          override: 'NR_SA',
+          plmn: '311-480',
+          nrAttached: true,
+        ),
+        '5G',
+      );
+      // High band on a network with no tag stays plain 5G.
+      expect(
+        techBadgeLabel(
+          tech: 'NR',
+          override: 'NR_SA',
+          plmn: '530-05',
+          nrAttached: true,
+          highBand: true,
+        ),
+        '5G',
+      );
+    });
   });
 }
