@@ -987,13 +987,18 @@ class SimReading {
 
   /// Cells heard but not serving.
   ///
-  /// Everything the aggregation card already accounts for is left out: the
-  /// carriers [lteSecondaries] claims, and the cell each component carrier is
-  /// assigned. A supplemental downlink the radio is using is not a neighbour,
-  /// even though it is unregistered and would otherwise be listed.
+  /// Everything the app already accounts for elsewhere is left out: the
+  /// carriers [lteSecondaries] claims, and any cell the radio itself tied to a
+  /// component carrier by PCI. A supplemental downlink the radio is using is
+  /// not a neighbour, even though it is unregistered and would otherwise be
+  /// listed. A cell matched only because it is the strongest on a carrier's
+  /// band stays in this list: that is a guess, and the aggregation card no
+  /// longer reports it either.
   List<CellTower> get neighbours {
     final secondaries = lteSecondaries;
-    final owned = carrierCells().values.toSet();
+    final owned = <CellTower>{
+      for (final carrier in carriers) ?reportedCellFor(carrier),
+    };
     return cells
         .where(
           (cell) =>

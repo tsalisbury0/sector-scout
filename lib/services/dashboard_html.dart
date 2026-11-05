@@ -524,7 +524,6 @@ class DashboardHtml {
       final cell = row.cell;
       final details = [
         ?row.pci,
-        ?row.band,
         if (cell?.dbm case final dbm?) '$dbm dBm',
       ].join(' · ');
       final frequency = row.frequency;
