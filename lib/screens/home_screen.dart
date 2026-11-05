@@ -1761,8 +1761,8 @@ class _CarrierRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cell = row.cell;
     // The band is already the title, so the only sub-line worth having is the
-    // PCI — and that exists only when the scan reported the cell the radio
-    // named.
+    // PCI of the cell the carrier is coming from — the same cell the neighbour
+    // list gives up when a carrier claims it.
     final details = row.pci ?? '';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

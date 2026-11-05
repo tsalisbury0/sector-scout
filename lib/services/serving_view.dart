@@ -159,7 +159,7 @@ class ServingView {
       CarrierRow(
         carrier: carrier,
         tech: _techLabel(carrier.tech),
-        cell: sim.reportedCellFor(carrier),
+        cell: sim.carrierCell(carrier),
       ),
   ];
 
@@ -235,12 +235,12 @@ class ServingView {
 ///
 /// The aggregation card and the neighbour list are two answers about the same
 /// radios, so they are drawn the same way: a technology chip, the band, and the
-/// cells' own readings — but only the readings that exist. A carrier config
-/// names a band and a width, never a cell, so the identity and the level come
-/// from [cell], which is filled only when the radio reported a PCI and the scan
-/// lists that same PCI. A carrier with no PCI — which is every LTE carrier this
-/// S25 reports — shows its band and width and nothing else; naming the
-/// strongest cell on the band would be a guess dressed as a measurement.
+/// cell's own readings. A carrier config names a band and a width, never a
+/// cell: when the radio reports a PCI that is the cell, and when it does not —
+/// which is every LTE carrier this S25 reports — the strongest cell on the band
+/// stands in. Either way the row mirrors that cell's PCI and level, and that
+/// cell is the one the aggregation card accounts for, so it leaves the
+/// neighbour list rather than being reported twice.
 class CarrierRow {
   const CarrierRow({required this.carrier, required this.tech, this.cell});
 
@@ -249,14 +249,15 @@ class CarrierRow {
   /// `LTE` / `NR`, the chip a neighbour row carries.
   final String tech;
 
-  /// The cell the scan reported under this carrier's own PCI.
+  /// The cell feeding this carrier: the PCI it named, or the strongest cell on
+  /// its band when it named none.
   final CellTower? cell;
 
   /// `B66`, or null when the modem named no band.
   String? get band => carrier.bandLabel;
 
-  /// `PCI 148`, or null when nothing in the scan carries this carrier's PCI.
-  String? get pci => cell == null ? null : 'PCI ${carrier.pci}';
+  /// `PCI 148` — the cell's, whichever way the cell was found.
+  String? get pci => cell?.pci == null ? null : 'PCI ${cell!.pci}';
 
   int? get dbm => cell?.dbm;
 

@@ -988,17 +988,13 @@ class SimReading {
   /// Cells heard but not serving.
   ///
   /// Everything the app already accounts for elsewhere is left out: the
-  /// carriers [lteSecondaries] claims, and any cell the radio itself tied to a
-  /// component carrier by PCI. A supplemental downlink the radio is using is
-  /// not a neighbour, even though it is unregistered and would otherwise be
-  /// listed. A cell matched only because it is the strongest on a carrier's
-  /// band stays in this list: that is a guess, and the aggregation card no
-  /// longer reports it either.
+  /// carriers [lteSecondaries] claims, and the cell each component carrier is
+  /// assigned — by PCI when the radio reports one, by band and strength when it
+  /// does not. A supplemental downlink the radio is using is not a neighbour,
+  /// even though it is unregistered and would otherwise be listed.
   List<CellTower> get neighbours {
     final secondaries = lteSecondaries;
-    final owned = <CellTower>{
-      for (final carrier in carriers) ?reportedCellFor(carrier),
-    };
+    final owned = carrierCells().values.toSet();
     return cells
         .where(
           (cell) =>
@@ -1042,24 +1038,6 @@ class SimReading {
       if (mhz != null) usedMhz.add(mhz);
     }
     return assigned;
-  }
-
-  /// The cell the scan reported under this carrier's own PCI.
-  ///
-  /// A carrier config names a band, a width and sometimes a PCI — never a cell.
-  /// When the radio does name a PCI, the scan usually lists the same one; that
-  /// is the only attribution that is a reading rather than a guess. A carrier
-  /// with no PCI, or one whose PCI no cell in the scan carries, has no cell
-  /// here, and the cards say nothing about its identity rather than picking
-  /// the strongest cell on the band.
-  CellTower? reportedCellFor(RadioCarrier carrier) {
-    final pci = carrier.pci;
-    if (pci == null || pci <= 0) return null;
-    for (final cell in cells) {
-      if (cell.tech != carrier.tech) continue;
-      if (cell.pci == pci) return cell;
-    }
-    return null;
   }
 
   /// The cell a carrier is being received from, or null when nothing matches.
