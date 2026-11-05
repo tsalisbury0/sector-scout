@@ -1,9 +1,9 @@
 [
-  { "mcc": "310", "mnc": "410", "brand": "AT&T", "fiveG": "5G+", "nrBits": 26 },
-  { "mcc": "310", "mnc": "260", "brand": "T-Mobile", "fiveG": "5GUC", "nrBits": 24 },
-  { "mcc": "311", "mnc": "480", "brand": "Verizon", "fiveG": "5GUW", "nrBits": 22 },
+  { "mcc": "310", "mnc": "410", "brand": "AT&T", "fiveG": "5G+", "nrBits": "26/10" },
+  { "mcc": "310", "mnc": "260", "brand": "T-Mobile", "fiveG": "5GUC", "nrBits": "24/12" },
+  { "mcc": "311", "mnc": "480", "brand": "Verizon", "fiveG": "5GUW", "nrBits": "22/14" },
   { "mcc": "311", "mnc": "970", "brand": "Big River" },
-  { "mcc": "313", "mnc": "100", "brand": "FirstNet", "fiveG": "5G+", "nrBits": 26 },
+  { "mcc": "313", "mnc": "100", "brand": "FirstNet", "fiveG": "5G+", "nrBits": "26/10" },
   { "mcc": "313", "mnc": "700", "brand": "Ameren", "boost": 15, "lteM": true },
   { "mcc": "310", "mnc": "830", "brand": "T-Satellite", "satellite": true },
   { "mcc": "311", "mnc": "570", "brand": "Mediacom" },

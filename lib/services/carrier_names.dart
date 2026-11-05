@@ -23,7 +23,7 @@ import '../models/cell_snapshot.dart';
 ///
 /// ```json
 /// {
-///   "310-260": { "brand": "T-Mobile", "fiveG": "5GUC", "nrBits": 24 },
+///   "310-260": { "brand": "T-Mobile", "fiveG": "5GUC", "nrBits": "24/12" },
 ///   "310-830": { "brand": "T-Satellite", "satellite": true },
 ///   "312-190": { "brand": "T-911", "boost": 20 },
 ///   "313-700": { "brand": "Ameren", "boost": 15, "lteM": true }
@@ -39,10 +39,11 @@ import '../models/cell_snapshot.dart';
 /// `fiveG` is the badge the network draws for NR Advanced — `5G+` at AT&T,
 /// `5GUC` at T-Mobile, `5GUW` at Verizon, or its own word elsewhere. The
 /// built-in styles stay as a fallback, so an untagged entry reads exactly as
-/// it always did. `nrBits` is the gNB ID width inside the 36-bit NCI, which
-/// splits an NR cell into gNB and sector: AT&T runs 26, T-Mobile 24, most
-/// others 22. A tag beats those defaults, so a network that picked a
-/// different split needs no release.
+/// it always did. `nrBits` is the bit split inside the 36-bit NCI, written the way an
+/// operator publishes it: gNB bits over sector bits. AT&T is `26/10`,
+/// T-Mobile `24/12`, most others `22/14`, and a bare width (`26`) still reads.
+/// The split beats those built-in defaults, so a network that picked a
+/// different one needs no release.
 const String kCarrierNamesUrl = String.fromEnvironment('CARRIER_NAMES_URL');
 
 /// The satellite bars offset when an entry is only flagged `satellite`.
@@ -80,9 +81,10 @@ class CarrierTable {
   /// PLMNs carrying `nrBits`: the gNB ID width inside the 36-bit NCI.
   ///
   /// 3GPP lets each operator choose the split, so it cannot be derived from
-  /// the NCI. AT&T runs 26 bits, T-Mobile 24, and most others 22; a network
-  /// that picked something else — or changes it — says so here instead of
-  /// waiting for a build.
+  /// the NCI. AT&T runs 26, T-Mobile 24, and most others 22; a network that
+  /// picked something else — or changes it — says so here instead of waiting
+  /// for a build. The list writes it as `"26/10"` (gNB bits over sector
+  /// bits); this map holds the gNB half, which is what the decode needs.
   final Map<String, int> nrBits;
 
   bool get isEmpty => names.isEmpty;
@@ -362,14 +364,28 @@ class CarrierNames {
 
   /// The gNB ID width an entry carries (`nrBits`), or null.
   ///
-  /// A width outside 10–30 is a typo, not a split: the NCI is 36 bits, so a
-  /// gNB narrower than 10 leaves no room for a sector and a 31-bit one would
-  /// make the sector a single bit.
+  /// The list writes the split itself — `"26/10"`, gNB bits over sector bits —
+  /// because that is the number an operator actually publishes, and it says
+  /// what the other bits are. A bare width (`26`) still reads, since that is
+  /// what the app stores and an older list may carry.
+  ///
+  /// Either way the width has to be plausible: the NCI is 36 bits, so a gNB
+  /// narrower than 10 leaves no room for a sector and a 31-bit one would make
+  /// the sector a single bit. A split that does not add up to 36 is a typo too.
   static int? _nrBitsOf(Map<Object?, Object?> entry) {
     final raw = entry['nrBits'] ?? entry['gnbBits'] ?? entry['bitSplit'];
-    final value = raw is num
-        ? raw.toInt()
-        : int.tryParse(raw?.toString().trim() ?? '');
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    if (text.contains('/')) {
+      final parts = text.split('/');
+      if (parts.length != 2) return null;
+      final gnb = int.tryParse(parts[0].trim());
+      final sector = int.tryParse(parts[1].trim());
+      if (gnb == null || sector == null) return null;
+      if (gnb < 10 || gnb > 30 || sector < 6 || sector > 26) return null;
+      return gnb + sector == 36 ? gnb : null;
+    }
+    final value = raw is num ? raw.toInt() : int.tryParse(text);
     if (value == null || value < 10 || value > 30) return null;
     return value;
   }
