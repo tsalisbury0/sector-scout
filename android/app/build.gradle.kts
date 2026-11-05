@@ -57,6 +57,15 @@ android {
             } else {
                 signingConfig = signingConfigs.getByName("debug")
             }
+            // R8 has to keep the Shizuku user service intact: it is started by
+            // reflection from another process, by class name and no-arg
+            // constructor, neither of which survives shrinking on its own.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

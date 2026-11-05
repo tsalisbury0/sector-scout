@@ -36,6 +36,20 @@ import java.util.concurrent.Executors
  */
 class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.Stub() {
 
+    /**
+     * The constructor Shizuku actually uses.
+     *
+     * The user service is started by `moe.shizuku.starter.ServiceStarter`, which
+     * instantiates it with `Class.newInstance()` — a public, no-argument
+     * constructor, nothing else. With only the `(Context?)` form below, that
+     * call threw `InstantiationException` inside the shell process, Shizuku gave
+     * up after its 30 s start timeout, and Settings sat on "starting" forever.
+     * No context comes through this path, which is fine: the shell process has no
+     * app context anyway, and every call that needs one falls back to
+     * [systemContext].
+     */
+    constructor() : this(null)
+
     /** The last list the registry pushed, per subscription. */
     private val live = HashMap<Int, List<Any>>()
 
