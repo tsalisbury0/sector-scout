@@ -26,5 +26,5 @@
   {"mcc": "312", "mnc": "190", "brand": "T-911", "satellite": true},
   {"mcc": "216", "mnc": "30", "brand": "Telekom HU"},
   {"mcc": "216", "mnc": "70", "brand": "One HU"},
-  {"mcc": "530", "mnc": "05", "brand": "Spark NZ"}
+  {"mcc": "530", "mnc": "05", "brand": "Spark NZ", "fiveG": "5G+"}
 ]
