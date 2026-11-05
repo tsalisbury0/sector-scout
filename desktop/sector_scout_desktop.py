@@ -4041,7 +4041,7 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "1.1.0-beta"
+APP_VERSION = "1.1.0-beta2"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )
