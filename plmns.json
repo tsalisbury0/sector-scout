@@ -63,5 +63,17 @@
   {"mcc": "706", "mnc": "03", "brand": "Tigo", "nrBits": "24/12"},
   {"mcc": "706", "mnc": "01", "brand": "Claro", "nrBits": "24/12"},
   {"mcc": "708", "mnc": "02", "brand": "Tigo", "nrBits": "24/12"},
-  {"mcc": "708", "mnc": "01", "brand": "Claro", "nrBits": "24/12"}
+  {"mcc": "708", "mnc": "01", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "364", "mnc": "39", "brand": "BTC", "nrBits": "24/12"},
+  {"mcc": "364", "mnc": "49", "brand": "Aliv", "nrBits": "24/12"},
+  {"mcc": "346", "mnc": "050", "brand": "Digicel", "nrBits": "24/12"},
+  {"mcc": "346", "mnc": "140", "brand": "FLOW", "nrBits": "24/12"},
+  {"mcc": "350", "mnc": "01", "brand": "Digicel", "nrBits": "24/12"},
+  {"mcc": "350", "mnc": "02", "brand": "ONE", "nrBits": "24/12"},
+  {"mcc": "350", "mnc": "05", "brand": "Paradise", "nrBits": "24/12"},
+  {"mcc": "310", "mnc": "470", "brand": "Docomo", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "140", "brand": "GTA", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "030", "brand": "IT&E", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "780", "brand": "ASTCA", "nrBits": "22/14"},
+  {"mcc": "544", "mnc": "11", "brand": "Bluesky", "nrBits": "24/12"}
 ]
