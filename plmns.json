@@ -38,5 +38,8 @@
   {"mcc": "334", "mnc": "20", "brand": "Telcel", "nrBits": "22/14"},
   {"mcc": "334", "mnc": "50", "brand": "AT&T MX", "fiveG": "5G+", "nrBits": "22/14"},
   {"mcc": "334", "mnc": "30", "brand": "Movistar", "fiveG": "5G+", "nrBits": "22/14"},
-  {"mcc": "334", "mnc": "140", "brand": "Altán Redes", "nrBits": "22/14"}
+  {"mcc": "334", "mnc": "140", "brand": "Altán Redes", "nrBits": "22/14"},
+  {"mcc": "724", "mnc": "02", "brand": "Vivo", "nrBits": "24/12"},
+  {"mcc": "724", "mnc": "05", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "724", "mnc": "04", "brand": "TIM", "nrBits": "24/12"}
 ]
