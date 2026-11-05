@@ -1039,6 +1039,24 @@ class SimReading {
     return assigned;
   }
 
+  /// The cell the scan reported under this carrier's own PCI.
+  ///
+  /// A carrier config names a band, a width and sometimes a PCI — never a cell.
+  /// When the radio does name a PCI, the scan usually lists the same one; that
+  /// is the only attribution that is a reading rather than a guess. A carrier
+  /// with no PCI, or one whose PCI no cell in the scan carries, has no cell
+  /// here, and the cards say nothing about its identity rather than picking
+  /// the strongest cell on the band.
+  CellTower? reportedCellFor(RadioCarrier carrier) {
+    final pci = carrier.pci;
+    if (pci == null || pci <= 0) return null;
+    for (final cell in cells) {
+      if (cell.tech != carrier.tech) continue;
+      if (cell.pci == pci) return cell;
+    }
+    return null;
+  }
+
   /// The cell a carrier is being received from, or null when nothing matches.
   ///
   /// A carrier config names a band and a width, and sometimes a PCI — never a

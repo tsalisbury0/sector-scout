@@ -453,7 +453,12 @@ class DashboardHtml {
       if (sim.carriers.isNotEmpty) {
         out
           ..write('<div class="h2">${_esc(prefix)}Carrier aggregation</div>')
-          ..write(_detail(ServingView.carrierEntries(sim)));
+          ..write(
+            _carrierCard(
+              ServingView.carrierRows(sim),
+              ServingView.carrierTotals(sim),
+            ),
+          );
       }
 
       out
@@ -500,6 +505,48 @@ class DashboardHtml {
       out
         ..write('<div class="kv"><span class="k">${_esc(entry.key)}</span>')
         ..write('<span class="v">${_esc(entry.value)}</span></div>');
+    }
+    out.write('</div>');
+    return out.toString();
+  }
+
+  /// Component carriers, drawn with the same markup a neighbour row uses.
+  ///
+  /// Only the identity and level of a cell the scan actually reported are
+  /// shown: the reader names a band, a width and sometimes a PCI, never a
+  /// cell.
+  static String _carrierCard(
+    List<CarrierRow> rows,
+    List<MapEntry<String, String>> totals,
+  ) {
+    final out = StringBuffer('<div class="card">');
+    for (final row in rows) {
+      final cell = row.cell;
+      final details = [
+        ?row.pci,
+        ?row.band,
+        if (cell?.dbm case final dbm?) '$dbm dBm',
+      ].join(' · ');
+      final frequency = row.frequency;
+      out
+        ..write('<div class="nb">')
+        ..write('<span class="tech">${_esc(row.tech)}</span>')
+        ..write('<div class="nb-main">')
+        ..write(
+          '<div class="nb-title">${_esc('${row.band ?? '?'} · ${row.width}')}</div>',
+        );
+      if (details.isNotEmpty) {
+        out.write('<div class="nb-sub">${_esc(details)}</div>');
+      }
+      if (frequency != null) {
+        out.write('<div class="nb-freq">${_esc(frequency)}</div>');
+      }
+      out.write('</div></div>');
+    }
+    for (final total in totals) {
+      out
+        ..write('<div class="kv"><span class="k">${_esc(total.key)}</span>')
+        ..write('<span class="v">${_esc(total.value)}</span></div>');
     }
     out.write('</div>');
     return out.toString();

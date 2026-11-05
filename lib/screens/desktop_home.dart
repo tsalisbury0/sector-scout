@@ -1264,7 +1264,10 @@ class _SimBlock extends StatelessWidget {
           ],
           if (sim.carriers.isNotEmpty) ...[
             const _SectionHeading('Carrier aggregation'),
-            _DetailCard(rows: ServingView.carrierEntries(sim)),
+            _CarrierCard(
+              rows: ServingView.carrierRows(sim),
+              totals: ServingView.carrierTotals(sim),
+            ),
           ],
           const _SectionHeading('Radio quality'),
           _DetailCard(rows: ServingView.qualityEntries(sim)),
@@ -1455,6 +1458,111 @@ class _DetailCard extends StatelessWidget {
 }
 
 /// Cells heard but not serving: a band and a PCI, and the frequency line.
+/// One row per component carrier, drawn like a neighbour row.
+class _CarrierCard extends StatelessWidget {
+  const _CarrierCard({required this.rows, required this.totals});
+
+  final List<CarrierRow> rows;
+  final List<MapEntry<String, String>> totals;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < rows.length; index++)
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+              decoration: index == 0
+                  ? null
+                  : const BoxDecoration(
+                      border: Border(top: BorderSide(color: AppColors.border)),
+                    ),
+              child: Row(
+                children: [
+                  Text(
+                    '${rows[index].band ?? '?'} · ${rows[index].width}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  if (rows[index].pci case final pci?) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      pci,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                  if (rows[index].cell case final cell?) ...[
+                    const SizedBox(width: 10),
+                    Text(
+                      cell.dbm == null ? '—' : '${cell.dbm} dBm',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.forBars(cell.bars),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SignalBars(bars: cell.bars, height: 14, barWidth: 3, gap: 2),
+                  ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      rows[index].frequency ?? '—',
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          for (final total in totals)
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      total.key,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    total.value,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NeighbourCard extends StatelessWidget {
   const _NeighbourCard({required this.cells});
 

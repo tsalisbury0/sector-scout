@@ -147,42 +147,35 @@ class ServingView {
     return cell == null ? const [] : qualityFor(cell, null);
   }
 
-  /// The carrier-aggregation card: one row per component carrier, then the
-  /// totals.
+  /// The component carriers, one row each, in the order the radio reports
+  /// them.
   ///
-  /// Empty unless the privileged reader answered, which is why the card
-  /// appears and disappears with Shizuku instead of showing dashes: without it
-  /// the app has no width to report, and a blank row would claim otherwise.
-  static List<MapEntry<String, String>> carrierEntries(SimReading sim) {
+  /// Every carrier gets its own row even when two of them are on the same band:
+  /// intra-band aggregation is two carriers on one band, and collapsing them by
+  /// band would report the pair as one. Empty unless the privileged reader
+  /// answered, which is why the card appears and disappears with Shizuku.
+  static List<CarrierRow> carrierRows(SimReading sim) => [
+    for (final carrier in sim.carriers)
+      CarrierRow(
+        carrier: carrier,
+        tech: _techLabel(carrier.tech),
+        cell: sim.reportedCellFor(carrier),
+      ),
+  ];
+
+  /// The totals the card closes with: the whole aggregate, and the NR share of
+  /// it when the link is not NR-only already.
+  static List<MapEntry<String, String>> carrierTotals(SimReading sim) {
     if (sim.carriers.isEmpty) return const [];
     final entries = <MapEntry<String, String>>[
-      for (final carrier in sim.carriers)
-        MapEntry(
-          '${carrier.bandLabel ?? '?'} · ${_techLabel(carrier.tech)}',
-          _carrierValue(carrier, sim),
-        ),
       MapEntry('Aggregate', '${shortMhz(sim.aggregatedBandwidthMhz)} MHz'),
     ];
-    // The NR side on its own, which is what a 5G reading is judged on; only
-    // worth a row when the link is not NR-only already.
     final nr = sim.nrCarriers;
     if (nr.isNotEmpty && nr.length != sim.carriers.length) {
       final khz = nr.fold(0, (sum, carrier) => sum + carrier.bandwidthKhz);
       entries.add(MapEntry('NR aggregate', '${shortMhz(khz / 1000)} MHz'));
     }
     return entries;
-  }
-
-  /// A carrier row: its width, then the cell it is coming from — frequency and
-  /// level — when the modem names a PCI that matches one of the cells heard.
-  static String _carrierValue(RadioCarrier carrier, SimReading sim) {
-    final parts = <String>['${shortMhz(carrier.bandwidthMhz)} MHz'];
-    final cell = sim.carrierCell(carrier);
-    if (cell?.downlinkMhz case final mhz?) {
-      parts.add('${mhz.toStringAsFixed(0)} MHz');
-    }
-    if (cell?.dbm case final dbm?) parts.add('$dbm dBm');
-    return parts.join(' · ');
   }
 
   /// How wide the carrier [cell] sits on, when the reader named it.
@@ -236,4 +229,41 @@ class ServingView {
     if (uplink == downlink) return '↓↑ ${shortMhz(downlink)} MHz';
     return '↓ ${shortMhz(downlink)} · ↑ ${shortMhz(uplink)} MHz';
   }
+}
+
+/// One component carrier, described the way a neighbour row is.
+///
+/// The aggregation card and the neighbour list are two answers about the same
+/// radios, so they are drawn the same way: a technology chip, the band, and the
+/// cells' own readings — but only the readings that exist. A carrier config
+/// names a band and a width, never a cell, so the identity and the level come
+/// from [cell], which is filled only when the radio reported a PCI and the scan
+/// lists that same PCI. A carrier with no PCI — which is every LTE carrier this
+/// S25 reports — shows its band and width and nothing else; naming the
+/// strongest cell on the band would be a guess dressed as a measurement.
+class CarrierRow {
+  const CarrierRow({required this.carrier, required this.tech, this.cell});
+
+  final RadioCarrier carrier;
+
+  /// `LTE` / `NR`, the chip a neighbour row carries.
+  final String tech;
+
+  /// The cell the scan reported under this carrier's own PCI.
+  final CellTower? cell;
+
+  /// `B66`, or null when the modem named no band.
+  String? get band => carrier.bandLabel;
+
+  /// `PCI 148`, or null when nothing in the scan carries this carrier's PCI.
+  String? get pci => cell == null ? null : 'PCI ${carrier.pci}';
+
+  int? get dbm => cell?.dbm;
+
+  /// `↓ 2175 · ↑ 1775 MHz`, only from a matched cell.
+  String? get frequency =>
+      cell == null ? null : ServingView.neighbourFrequency(cell!);
+
+  /// `10 MHz` — the one thing only the privileged reader can say.
+  String get width => '${ServingView.shortMhz(carrier.bandwidthMhz)} MHz';
 }

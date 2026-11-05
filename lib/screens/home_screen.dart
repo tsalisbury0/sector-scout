@@ -981,7 +981,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'behind it.',
           ),
           const SizedBox(height: 8),
-          _DetailCard(entries: ServingView.carrierEntries(sim)),
+          _CarrierCard(
+            rows: ServingView.carrierRows(sim),
+            totals: ServingView.carrierTotals(sim),
+          ),
         ],
         const SizedBox(height: 20),
         _SectionLabel('${prefix}Radio quality'),
@@ -1678,6 +1681,154 @@ class _NeighbourRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           SignalBars(bars: cell.bars, height: 22, barWidth: 4, gap: 3),
+        ],
+      ),
+    );
+  }
+}
+
+/// The aggregation card: one neighbour-style row per component carrier.
+///
+/// The rows look like the neighbour list because they answer the same question
+/// about the same radios, and because two carriers on one band are two row: a
+/// keyed label/value card would print identical labels for them and read as a
+/// repeat.
+class _CarrierCard extends StatelessWidget {
+  const _CarrierCard({required this.rows, required this.totals});
+
+  final List<CarrierRow> rows;
+  final List<MapEntry<String, String>> totals;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(height: 1, color: AppColors.border),
+              ),
+            _CarrierRow(row: rows[i]),
+          ],
+          for (final total in totals) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(height: 1, color: AppColors.border),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      total.key,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    total.value,
+                    style: monospace.copyWith(
+                      fontSize: 13,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CarrierRow extends StatelessWidget {
+  const _CarrierRow({required this.row});
+
+  final CarrierRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final cell = row.cell;
+    final details = [?row.pci, ?row.band].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              row.tech,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${row.band ?? '?'} · ${row.width}',
+                  style: monospace.copyWith(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                if (details.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    details,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ],
+                if (row.frequency case final frequency?) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    frequency,
+                    style: monospace.copyWith(
+                      fontSize: 10.5,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (cell != null) ...[
+            const SizedBox(width: 10),
+            Text(
+              cell.dbm == null ? '—' : '${cell.dbm} dBm',
+              style: monospace.copyWith(
+                fontSize: 12,
+                color: AppColors.forBars(cell.bars),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SignalBars(bars: cell.bars, height: 22, barWidth: 4, gap: 3),
+          ],
         ],
       ),
     );
