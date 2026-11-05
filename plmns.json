@@ -11,7 +11,7 @@
   {"mcc": "901", "mnc": "98", "brand": "Skylo", "satellite": true},
   {"mcc": "901", "mnc": "97", "brand": "Sateliot", "satellite": true},
   {"mcc": "901", "mnc": "03", "brand": "Iridium", "satellite": true},
-  {"mcc": "901", "mnc": "57", "brand": "SpaceMobile ROAM", "satellite": true},
+  {"mcc": "901", "mnc": "57", "brand": "AST SpaceMobile", "satellite": true},
   {"mcc": "314", "mnc": "590", "brand": "Lynk Global", "satellite": true},
   {"mcc": "901", "mnc": "10", "brand": "Omnispace", "satellite": true},
   {"mcc": "901", "mnc": "50", "brand": "EchoStar", "satellite": true},
@@ -22,9 +22,10 @@
   {"mcc": "901", "mnc": "29", "brand": "Myriota", "satellite": true},
   {"mcc": "901", "mnc": "30", "brand": "OQ Technology", "satellite": true},
   {"mcc": "901", "mnc": "24", "brand": "Globalstar", "satellite": true},
-  {"mcc": "313", "mnc": "210", "brand": "SpaceMobile AT&T", "satellite": true},
+  {"mcc": "313", "mnc": "210", "brand": "AT&T SAT", "satellite": true},
   {"mcc": "312", "mnc": "190", "brand": "T-911", "satellite": true},
   {"mcc": "216", "mnc": "30", "brand": "Telekom HU"},
   {"mcc": "216", "mnc": "70", "brand": "One HU"},
-  {"mcc": "530", "mnc": "05", "brand": "Spark NZ", "fiveG": "5G+", "nrBits": "24/12"}
+  {"mcc": "530", "mnc": "05", "brand": "Spark NZ", "fiveG": "5G+", "nrBits": "24/12"},
+  {"mcc": "432", "mnc": "12", "brand": "HIWEB"}
 ]
