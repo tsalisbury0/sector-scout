@@ -86,5 +86,9 @@
   {"mcc": "311", "mnc": "870", "brand": "Mobi", "nrBits": "24/12"},
   {"mcc": "311", "mnc": "370", "brand": "GCI", "nrBits": "22/14"},
   {"mcc": "310", "mnc": "050", "brand": "GCI Legacy", "nrBits": "22/14"},
-  {"mcc": "311", "mnc": "400", "brand": "ASTAC", "nrBits": "22/14"}
+  {"mcc": "311", "mnc": "400", "brand": "ASTAC", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "450", "brand": "Viaero", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "020", "brand": "Union", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "590", "brand": "Carolina West", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "540", "brand": "Thumb", "nrBits": "22/14"}
 ]
