@@ -75,5 +75,16 @@
   {"mcc": "310", "mnc": "140", "brand": "GTA", "nrBits": "22/14"},
   {"mcc": "310", "mnc": "030", "brand": "IT&E", "nrBits": "22/14"},
   {"mcc": "311", "mnc": "780", "brand": "ASTCA", "nrBits": "22/14"},
-  {"mcc": "544", "mnc": "11", "brand": "Bluesky", "nrBits": "24/12"}
+  {"mcc": "544", "mnc": "11", "brand": "Bluesky", "nrBits": "24/12"},
+  {"mcc": "330", "mnc": "110", "brand": "Liberty", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "530", "brand": "Viya", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "110", "brand": "IT&E", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "230", "brand": "C Spire", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "440", "brand": "Appalachian", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "340", "brand": "Nex-Tech", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "570", "brand": "United", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "870", "brand": "Mobi", "nrBits": "24/12"},
+  {"mcc": "311", "mnc": "370", "brand": "GCI", "nrBits": "22/14"},
+  {"mcc": "310", "mnc": "050", "brand": "GCI Legacy", "nrBits": "22/14"},
+  {"mcc": "311", "mnc": "400", "brand": "ASTAC", "nrBits": "22/14"}
 ]
