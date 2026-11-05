@@ -27,5 +27,16 @@
   {"mcc": "216", "mnc": "30", "brand": "Telekom HU"},
   {"mcc": "216", "mnc": "70", "brand": "One HU"},
   {"mcc": "530", "mnc": "05", "brand": "Spark NZ", "fiveG": "5G+", "nrBits": "24/12"},
-  {"mcc": "432", "mnc": "12", "brand": "HIWEB"}
+  {"mcc": "432", "mnc": "12", "brand": "HIWEB"},
+  {"mcc": "302", "mnc": "720", "brand": "Rogers", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "220", "brand": "Telus", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "610", "brand": "Bell", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "490", "brand": "Freedom", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "500", "brand": "Vidéotron", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "780", "brand": "SaskTel", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "302", "mnc": "270", "brand": "Eastlink", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "334", "mnc": "20", "brand": "Telcel", "nrBits": "22/14"},
+  {"mcc": "334", "mnc": "50", "brand": "AT&T MX", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "334", "mnc": "30", "brand": "Movistar", "fiveG": "5G+", "nrBits": "22/14"},
+  {"mcc": "334", "mnc": "140", "brand": "Altán Redes", "nrBits": "22/14"}
 ]
