@@ -31,6 +31,16 @@ object PrivilegedRadio {
 
     /** Shizuku package name, and the Sui package that provides the same API. */
     private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
+
+    /**
+     * The Shizuku API level this build is compiled against.
+     *
+     * `dev.rikka.shizuku:api:13.1.5` speaks API 13. A Shizuku app below that
+     * answers the binder differently, and the failure surfaces inside the bound
+     * user service rather than as a clean refusal — so the reader is offered
+     * only on that level or newer, and bound only there.
+     */
+    private const val MIN_SHIZUKU_API = 13
     private const val SUI_PACKAGE = "rikka.sui"
 
     private var appContext: Context? = null
@@ -73,7 +83,7 @@ object PrivilegedRadio {
     }
 
     private val onBinderReceived = Shizuku.OnBinderReceivedListener {
-        if (permitted()) bind()
+        if (supported() && permitted()) bind()
     }
 
     private val onBinderDead = Shizuku.OnBinderDeadListener {
@@ -103,7 +113,7 @@ object PrivilegedRadio {
             Shizuku.addBinderReceivedListenerSticky(onBinderReceived)
             Shizuku.addBinderDeadListener(onBinderDead)
             Shizuku.addRequestPermissionResultListener(onPermissionResult)
-            if (enabled && permitted()) bind()
+            if (enabled && supported() && permitted()) bind()
         } catch (error: Throwable) {
             // Older Shizuku, or a device where the provider never ran.
             Log.w(TAG, "Shizuku listeners unavailable: ${error.message}")
@@ -130,6 +140,12 @@ object PrivilegedRadio {
      */
     fun setEnabled(context: Context, on: Boolean) {
         if (enabled == on) return
+        // A second lock behind the switch, which Settings disables in this case:
+        // no entry point may bind a Shizuku older than the API this build uses.
+        if (on && !supported()) {
+            Log.w(TAG, "carrier reader refused: Shizuku API below $MIN_SHIZUKU_API")
+            return
+        }
         enabled = on
         if (on) {
             attach(context)
@@ -156,12 +172,22 @@ object PrivilegedRadio {
         null
     }
 
+    /** The API level of the running Shizuku app, or 0 when none is running. */
+    private fun shizukuApi(): Int = try {
+        if (Shizuku.pingBinder()) Shizuku.getVersion() else 0
+    } catch (error: Throwable) {
+        0
+    }
+
+    /** True when the running Shizuku speaks the API this build compiles to. */
+    private fun supported(): Boolean = shizukuApi() >= MIN_SHIZUKU_API
+
     /** One of the strings the Dart side maps to a row in Settings. */
     private fun state(context: Context): String {
         if (!installed(context)) return "not_installed"
         return try {
             if (!Shizuku.pingBinder()) return "not_running"
-            if (Shizuku.isPreV11()) return "unsupported"
+            if (!supported()) return "unsupported"
             if (!permitted()) return "no_permission"
             if (service == null) {
                 bind()

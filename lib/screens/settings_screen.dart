@@ -232,9 +232,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'The width of each aggregated carrier sits behind hidden '
                 'telephony APIs. Shizuku lends the app a shell-identity service '
                 'that can read them — started once over adb, or from Android '
-                '11’s wireless debugging, so it needs no root. Without it the '
-                'app reads exactly what the public APIs expose and these rows '
-                'stay away.',
+                '11’s wireless debugging, so it needs no root. It has to be '
+                'Shizuku 13 or newer — the API level this build is compiled '
+                'against. Without it the app reads exactly what the public '
+                'APIs expose and these rows stay away.',
           ),
           _SettingsCard(
             children: [
@@ -245,6 +246,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'widths, no aggregation card, and nothing running with adb '
                     'privileges. The rest of the app is unchanged.',
                 value: AppSettings.carrierDetail,
+                // Below the API level this build compiles to the switch can only
+                // fail, so it is not offered at all.
+                enabled:
+                    _carrierStatus?.state != CarrierDetailState.unsupported,
                 onChanged: (value) => unawaited(_setCarrierDetail(value)),
               ),
               const _CardDivider(),

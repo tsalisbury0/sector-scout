@@ -54,7 +54,8 @@ class CarrierDetailStatus {
       'Shizuku is not installed. It needs no root, but has to be started once '
           'from a computer, or from Android 11’s wireless debugging.',
     CarrierDetailState.unsupported =>
-      'This Shizuku is older than v11, which is where the reader lives.',
+      'This Shizuku is older than API 13, the level the carrier reader is '
+          'built against. Update Shizuku, then switch the reader on.',
     CarrierDetailState.disabled =>
       'Switched off. No shell-identity service runs, and the app reads only '
           'what the public APIs expose.',
