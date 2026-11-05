@@ -48,5 +48,20 @@
   {"mcc": "732", "mnc": "101", "brand": "Claro", "nrBits": "24/12"},
   {"mcc": "732", "mnc": "103", "brand": "Tigo", "nrBits": "24/12"},
   {"mcc": "732", "mnc": "123", "brand": "Movistar", "nrBits": "24/12"},
-  {"mcc": "732", "mnc": "130", "brand": "WOM", "nrBits": "24/12"}
+  {"mcc": "732", "mnc": "130", "brand": "WOM", "nrBits": "24/12"},
+  {"mcc": "722", "mnc": "34", "brand": "Personal", "nrBits": "22/14"},
+  {"mcc": "722", "mnc": "310", "brand": "Claro", "nrBits": "22/14"},
+  {"mcc": "722", "mnc": "10", "brand": "Movistar", "nrBits": "22/14"},
+  {"mcc": "704", "mnc": "01", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "704", "mnc": "02", "brand": "Tigo", "nrBits": "24/12"},
+  {"mcc": "712", "mnc": "01", "brand": "kölbi", "nrBits": "22/14"},
+  {"mcc": "712", "mnc": "03", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "712", "mnc": "04", "brand": "Liberty", "nrBits": "24/12"},
+  {"mcc": "714", "mnc": "01", "brand": "+Móvil", "nrBits": "22/14"},
+  {"mcc": "714", "mnc": "20", "brand": "Tigo", "nrBits": "22/14"},
+  {"mcc": "714", "mnc": "03", "brand": "Claro", "nrBits": "22/14"},
+  {"mcc": "706", "mnc": "03", "brand": "Tigo", "nrBits": "24/12"},
+  {"mcc": "706", "mnc": "01", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "708", "mnc": "02", "brand": "Tigo", "nrBits": "24/12"},
+  {"mcc": "708", "mnc": "01", "brand": "Claro", "nrBits": "24/12"}
 ]
