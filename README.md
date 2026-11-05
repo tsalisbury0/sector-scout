@@ -44,11 +44,14 @@ Dual SIM phones get one swipeable page per SIM.
 
 ## Adding a PLMN
 
-Carrier names are not built into the app. They come from a list in
-[`tsalisbury0/private_plmn`](https://github.com/tsalisbury0/private_plmn).
+Carrier names are not built into the app. They come from
+[`plmns.json`](https://github.com/tsalisbury0/sector-scout/blob/main/plmns.json)
+in this repository; the last copy fetched is cached on the device, so names and
+tags still resolve offline.
 
-If your network is missing, shows the wrong name, or needs a bar offset or a
-satellite / LTE-M tag, open an issue here:
+If your network is missing, shows the wrong name, or needs a bar offset, a
+satellite / LTE-M tag, an NR Advanced badge or a gNB bit split, open an issue
+here:
 
 **https://github.com/tsalisbury0/sector-scout/issues/new**
 
