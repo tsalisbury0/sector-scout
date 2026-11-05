@@ -44,5 +44,9 @@
   {"mcc": "724", "mnc": "04", "brand": "TIM", "nrBits": "24/12"},
   {"mcc": "730", "mnc": "01", "brand": "Entel", "nrBits": "22/14"},
   {"mcc": "730", "mnc": "02", "brand": "Movistar", "nrBits": "22/14"},
-  {"mcc": "730", "mnc": "09", "brand": "WOM", "nrBits": "22/14"}
+  {"mcc": "730", "mnc": "09", "brand": "WOM", "nrBits": "22/14"},
+  {"mcc": "732", "mnc": "101", "brand": "Claro", "nrBits": "24/12"},
+  {"mcc": "732", "mnc": "103", "brand": "Tigo", "nrBits": "24/12"},
+  {"mcc": "732", "mnc": "123", "brand": "Movistar", "nrBits": "24/12"},
+  {"mcc": "732", "mnc": "130", "brand": "WOM", "nrBits": "24/12"}
 ]
