@@ -106,6 +106,15 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(true)
                 }
+                // The list's `fiveG` labels, cached so the shade writes the
+                // same NR Advanced badge as the card.
+                "carrierFiveG" -> {
+                    CarrierBrands.saveFiveG(
+                        applicationContext,
+                        call.arguments as? Map<*, *>,
+                    )
+                    result.success(true)
+                }
 
                 // Bluetooth sharing and watching.
                 "bleShareStart" -> {

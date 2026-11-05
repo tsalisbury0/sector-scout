@@ -33,6 +33,11 @@ String? techBadgeLabel({
   final codes = plmn?.replaceAll('-', '');
   if (nrAttached) {
     if (override == 'NR_ADVANCED') {
+      // The operator list's own `fiveG` tag wins: it is the only place a
+      // network outside the three US brands can say how it writes NR
+      // Advanced, and it lets a brand restyle without a release.
+      final tagged = SignalQuality.fiveGFor(codes);
+      if (tagged != null) return tagged;
       if (codes != null && _attPlmns.contains(codes)) return '5G+';
       if (codes == _tMobile) return '5GUC';
       if (codes == _verizon) return '5GUW';

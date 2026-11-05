@@ -135,6 +135,8 @@ class SignalStatusService : Service() {
         _satellites.addAll(CarrierBrands.storedSatellites(this))
         _lteMs.clear()
         _lteMs.addAll(CarrierBrands.storedLteMs(this))
+        _fiveG.clear()
+        _fiveG.putAll(CarrierBrands.storedFiveG(this))
     }
 
     /** One modem read per update: the lines and the slot tag come from it. */
@@ -159,6 +161,7 @@ class SignalStatusService : Service() {
                 _satellites,
                 _lteMs,
                 AppSettings.corrections(applicationContext),
+                fiveG = _fiveG,
             )
         }
         val manager = getSystemService(NotificationManager::class.java)
@@ -328,6 +331,9 @@ class SignalStatusService : Service() {
         /** PLMNs the operator list flags `satellite` and `lteM`. */
         private val _satellites = mutableSetOf<String>()
         private val _lteMs = mutableSetOf<String>()
+
+        /** The list's `fiveG` labels, re-read with the other tags each tick. */
+        private val _fiveG = mutableMapOf<String, String>()
 
         /**
          * Replaces a tag set from the intent extras Android delivered.

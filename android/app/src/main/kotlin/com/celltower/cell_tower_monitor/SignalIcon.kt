@@ -52,10 +52,23 @@ object SignalIcon {
         plmn: String?,
         nrAttached: Boolean,
         aggregated: Boolean = false,
+        fiveG: Map<String, String> = emptyMap(),
     ): String? {
         if (nrAttached) {
             if (override == "NR_ADVANCED") {
                 val codes = plmn?.replace("-", "")
+                // The operator list's own `fiveG` tag wins over the built-in
+                // brands: it is the only way a network outside these three,
+                // or a brand that renames its badge, reaches the shade. The
+                // list keys PLMNs with the dash, a cell identity reports them
+                // without one, so both spellings are tried.
+                fun taggedLabel(): String? {
+                    if (fiveG.isEmpty() || codes == null) return null
+                    val dashed = "${codes.take(3)}-${codes.drop(3)}"
+                    return fiveG[codes] ?: fiveG[dashed]
+                }
+                val tagged = taggedLabel()
+                if (!tagged.isNullOrBlank()) return tagged
                 return when {
                     codes != null && attPlmns.contains(codes) -> "5G+"
                     codes == tMobile -> "5GUC"

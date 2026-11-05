@@ -203,6 +203,23 @@ void main() {
       expect(vzw.sector, 5);
     });
 
+    test('an nrBits tag sets the NCI split before the built-in brands', () {
+      // The operator list can name a split this build does not know, and can
+      // change one without a release: 24 bits must win over AT&T's 26.
+      SignalQuality.setNrBits(const {'310-410': 24});
+      addTearDown(() => SignalQuality.setNrBits(const {}));
+
+      final att = CellTower.fromMap({
+        'type': 'NR',
+        'registered': true,
+        'cellId': '12590807089',
+        'mcc': '310',
+        'mnc': '410',
+      });
+      expect(att.gnb, 12590807089 >> 12);
+      expect(att.sector, 12590807089 & ((1 << 12) - 1));
+    });
+
     test('reads a T-Mobile n38 indicator as n41', () {
       CellTower nr({
         required String mcc,

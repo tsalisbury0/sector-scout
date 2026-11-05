@@ -157,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         CarrierNames.boosts,
         CarrierNames.satellites,
         CarrierNames.lteMs,
+        fiveGs: CarrierNames.fiveGs,
       );
     }
     if (mounted) setState(() {});

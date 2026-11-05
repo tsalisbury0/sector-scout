@@ -107,14 +107,18 @@ class SignalNotification {
   Future<void> pushCarrierFlags(
     Map<String, double> boosts,
     Set<String> satellites,
-    Set<String> lteMs,
-  ) async {
+    Set<String> lteMs, {
+    Map<String, String> fiveGs = const {},
+  }) async {
     if (!isSupported) return;
     try {
       await _method.invokeMethod<bool>('carrierBoosts', boosts);
       // Same reason as in [enable]: Sets do not survive the method codec.
       await _method.invokeMethod<bool>('carrierSatellites', satellites.toList());
       await _method.invokeMethod<bool>('carrierLteMs', lteMs.toList());
+      if (fiveGs.isNotEmpty) {
+        await _method.invokeMethod<bool>('carrierFiveG', fiveGs);
+      }
     } on PlatformException {
       // Nothing cached; the next fetch seeds it again.
     } on MissingPluginException {

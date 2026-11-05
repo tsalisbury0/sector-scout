@@ -197,11 +197,18 @@ class CellTower {
   ///   yields 263313 / 12600, which is that same NCI read on the wrong raster.
   /// - **Everyone else: 22-bit gNB + 14-bit sector.** Confirmed against live
   ///   Verizon readings, where the 22-bit split matches the operator's maps.
-  int get _gnbBits => isAtt
-      ? 26
-      : isTmobile
-          ? 24
-          : 22;
+  int get _gnbBits {
+    // The operator list wins: it can name a split this build has never heard
+    // of, and it can change one without a release. Only a plausible width is
+    // accepted — a gNB needs at least 10 bits, a sector at least 6.
+    final tagged = SignalQuality.nrBitsFor(plmn);
+    if (tagged != null && tagged >= 10 && tagged <= 30) return tagged;
+    return isAtt
+        ? 26
+        : isTmobile
+            ? 24
+            : 22;
+  }
 
   /// gNB ID in decimal (5G only). Together with [sector] it rebuilds the NCI:
   /// `gnb << (36 - gnbBits) | sector`.
@@ -1277,6 +1284,12 @@ class SignalQuality {
   /// PLMNs the operator list flags with `lteM: true`.
   static Set<String> _lteMs = const {};
 
+  /// PLMNs the list gives a `fiveG` label — its house style for NR Advanced.
+  static Map<String, String> _fiveGs = const {};
+
+  /// PLMNs the list gives an `nrBits` gNB split for the 36-bit NCI.
+  static Map<String, int> _nrBits = const {};
+
   /// PLMNs that are SpaceX direct-to-cell satellite carriers, and therefore
   /// always count their bars on the satellite scale.
   ///
@@ -1302,6 +1315,41 @@ class SignalQuality {
   /// Replaces the set of PLMNs the list flags `lteM`.
   static void setLteMs(Set<String> plmns) {
     _lteMs = Set<String>.unmodifiable(plmns);
+  }
+
+  /// Replaces the `fiveG` labels the list carries.
+  static void setFiveGs(Map<String, String> labels) {
+    _fiveGs = Map<String, String>.unmodifiable(labels);
+  }
+
+  /// Replaces the `nrBits` splits the list carries.
+  static void setNrBits(Map<String, int> bits) {
+    _nrBits = Map<String, int>.unmodifiable(bits);
+  }
+
+  /// The label the operator list gives NR Advanced for this PLMN, or null.
+  ///
+  /// Accepts either `310-410` or `310410`: the badge works on the codes with
+  /// the dash stripped and the cells carry it, so both are looked up.
+  static String? fiveGFor(String? plmn) {
+    final key = _plmnKey(plmn);
+    if (key == null) return null;
+    return _fiveGs[key];
+  }
+
+  /// The gNB ID width the operator list gives this PLMN, or null.
+  static int? nrBitsFor(String? plmn) {
+    final key = _plmnKey(plmn);
+    if (key == null) return null;
+    return _nrBits[key];
+  }
+
+  /// `310410` / `310-410` → `310-410`.
+  static String? _plmnKey(String? plmn) {
+    if (plmn == null) return null;
+    final digits = plmn.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length < 5 || digits.length > 6) return null;
+    return '${digits.substring(0, 3)}-${digits.substring(3)}';
   }
 
   /// The table in use, keyed by `310-830` style PLMN.

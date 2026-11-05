@@ -21,6 +21,7 @@ object CarrierBrands {
     private const val KEY_BOOSTS = "carrier_boosts"
     private const val KEY_SATELLITES = "carrier_satellites"
     private const val KEY_LTE_MS = "carrier_lte_ms"
+    private const val KEY_FIVE_G = "carrier_five_g"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -111,6 +112,43 @@ object CarrierBrands {
     /** Persists the `lteM` PLMNs. */
     fun saveLteMs(context: Context, plmns: Collection<String>?) =
         saveTags(context, KEY_LTE_MS, plmns)
+
+    /**
+     * Stores the list's `fiveG` labels — the badge each network draws for NR
+     * Advanced.
+     *
+     * Cached beside the names for the same reason: the shade outlives the app,
+     * and a phone that starts offline must still write 5G+ the way the list
+     * says.
+     */
+    fun saveFiveG(context: Context, raw: Map<*, *>?) {
+        if (raw.isNullOrEmpty()) return
+        val json = JSONObject()
+        for ((key, value) in raw) {
+            val plmn = key?.toString()?.trim() ?: continue
+            val label = value?.toString()?.trim() ?: continue
+            if (plmn.isEmpty() || label.isEmpty()) continue
+            json.put(plmn, label)
+        }
+        if (json.length() == 0) return
+        prefs(context).edit().putString(KEY_FIVE_G, json.toString()).commit()
+    }
+
+    /** The stored `fiveG` labels, empty when the list has never carried any. */
+    fun storedFiveG(context: Context): Map<String, String> {
+        val raw = prefs(context).getString(KEY_FIVE_G, null) ?: return emptyMap()
+        return try {
+            val json = JSONObject(raw)
+            buildMap {
+                for (key in json.keys()) {
+                    val label = json.optString(key, "").trim()
+                    if (label.isNotEmpty()) put(key, label)
+                }
+            }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
 
     /** The stored table, for the app to seed itself from before a fetch. */
     fun stored(context: Context): Map<String, String> {

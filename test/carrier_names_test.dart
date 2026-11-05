@@ -305,4 +305,64 @@ void main() {
       expect(SignalQuality.boostFor('310-410'), 0);
     });
   });
+
+  group('fiveG and nrBits tags', () {
+    test('reads the NR Advanced label and the gNB split from either shape', () {
+      final list = CarrierNames.parseTable('''
+[
+  { "mcc": "310", "mnc": "410", "brand": "AT&T", "fiveG": "5G+", "nrBits": 26 },
+  { "mcc": "310", "mnc": "260", "brand": "T-Mobile", "fiveG": "5GUC" },
+  { "mcc": "530", "mnc": "05", "brand": "Spark NZ", "fiveG": "5G NZ" }
+]
+      ''');
+      final map = CarrierNames.parseTable('''
+        {
+          "310-410": {"brand": "AT&T", "fiveG": "5G+", "nrBits": 26}
+        }
+      ''');
+
+      expect(list.fiveGs['310-410'], '5G+');
+      expect(list.nrBits['310-410'], 26);
+      expect(list.fiveGs['310-260'], '5GUC');
+      // The zero-padded MNC reads too, since the modem and the list disagree.
+      expect(list.fiveGs['530-05'], '5G NZ');
+      expect(list.fiveGs['530-005'], '5G NZ');
+      expect(map.fiveGs['310-410'], '5G+');
+      expect(map.nrBits['310-410'], 26);
+      // A badge tag is not a bars offset, a satellite claim, or an LTE-M flag.
+      expect(list.boosts, isEmpty);
+      expect(list.satellites, isEmpty);
+      expect(list.lteMs, isEmpty);
+    });
+
+    test('an implausible bit width is ignored', () {
+      final table = CarrierNames.parseTable('''
+        {
+          "310-410": {"brand": "AT&T", "nrBits": 4},
+          "310-260": {"brand": "T-Mobile", "nrBits": 40}
+        }
+      ''');
+
+      expect(table.nrBits, isEmpty);
+    });
+
+    test('the tags reach the model through seed', () {
+      CarrierNames.seed(
+        {'310-410': 'AT&T'},
+        fiveGs: {'310-410': '5G+'},
+        nrBits: {'310-410': 24},
+      );
+      addTearDown(() {
+        SignalQuality.setFiveGs(const {});
+        SignalQuality.setNrBits(const {});
+      });
+
+      // Both spellings resolve: the badge works on compact codes, the cells
+      // carry the PLMN with the dash.
+      expect(SignalQuality.fiveGFor('310410'), '5G+');
+      expect(SignalQuality.fiveGFor('310-410'), '5G+');
+      expect(SignalQuality.nrBitsFor('310410'), 24);
+      expect(SignalQuality.nrBitsFor('310-260'), isNull);
+    });
+  });
 }

@@ -114,6 +114,8 @@ object SignalSummary {
         satellites: Set<String> = emptySet(),
         lteMs: Set<String> = emptySet(),
         corrections: Corrections = Corrections(),
+        fiveG: Map<String, String> = emptyMap(),
+        nrBits: Map<String, Int> = emptyMap(),
     ): Lines? {
         // The list spells PLMNs the way its UI does (`313-700`, `310-830`); a
         // cell identity reports `mcc` and `mnc` separately, so it reads
@@ -177,7 +179,7 @@ object SignalSummary {
 
         val detail = buildList {
             tag?.let { add(it) }
-            identityOf(primary)?.let { add(it) }
+            identityOf(primary, nrBits)?.let { add(it) }
             listOfNotNull(band, channel?.let { "${channelName(primary)} $it" })
                 .takeIf { it.isNotEmpty() }
                 ?.let { add(it.joinToString(" · ")) }
@@ -206,6 +208,7 @@ object SignalSummary {
                 // with no cell exposed: still 5G.
                 nrAttached = nr != null || nrConnected(sim),
                 aggregated = aggregated,
+                fiveG = fiveG,
             )
         }
 
@@ -501,7 +504,10 @@ object SignalSummary {
      * Cell identity: eNB/sector for LTE, gNB/sector for NR, using the operator's
      * gNB ID length — the same split the app shows.
      */
-    private fun identityOf(cell: Map<String, Any?>): String? {
+    private fun identityOf(
+        cell: Map<String, Any?>,
+        nrBits: Map<String, Int> = emptyMap(),
+    ): String? {
         val id = (cell["cellId"] as? String)?.toLongOrNull()
         if (id == null || id <= 0) {
             return (cell["pci"] as? Int)?.let { "PCI $it" }
@@ -510,7 +516,12 @@ object SignalSummary {
             "LTE" -> "eNB ${id shr 8} · sector ${id and 0xFF}"
             "NR" -> {
                 val plmn = plmnOf(cell)
+                // The operator list's own `nrBits` wins, so the shade decodes
+                // the NCI on the same split the card does.
+                val tagged = nrBits[plmn ?: ""]
+                    ?: nrBits[(plmn ?: "").let { "${it.take(3)}-${it.drop(3)}" }]
                 val bits = when {
+                    tagged != null && tagged in 10..30 -> tagged
                     attPlmns.contains(plmn) -> 26
                     tmobilePlmns.contains(plmn) -> 24
                     else -> 22

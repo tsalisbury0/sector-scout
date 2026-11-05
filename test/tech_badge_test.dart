@@ -422,4 +422,41 @@ void main() {
       expect(badgeForSim(sim), 'LTE');
     });
   });
+
+  group('fiveG tag', () {
+    test('a tagged network labels NR Advanced the way the list says', () {
+      SignalQuality.setFiveGs(const {'310-410': '5G+', '530-05': '5G NZ'});
+      addTearDown(() => SignalQuality.setFiveGs(const {}));
+
+      expect(
+        techBadgeLabel(
+          tech: 'LTE',
+          override: 'NR_ADVANCED',
+          plmn: '310-410',
+          nrAttached: true,
+        ),
+        '5G+',
+      );
+      // A network with no built-in style gets its own word.
+      expect(
+        techBadgeLabel(
+          tech: 'NR',
+          override: 'NR_ADVANCED',
+          plmn: '530-05',
+          nrAttached: true,
+        ),
+        '5G NZ',
+      );
+      // NR_NSA is not Advanced, so the tag does not apply there.
+      expect(
+        techBadgeLabel(
+          tech: 'NR',
+          override: 'NR_NSA',
+          plmn: '310-410',
+          nrAttached: true,
+        ),
+        '5G',
+      );
+    });
+  });
 }
