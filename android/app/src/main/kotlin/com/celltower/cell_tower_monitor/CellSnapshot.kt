@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.telephony.AccessNetworkConstants
+import android.telephony.CarrierConfigManager
 import android.telephony.CellIdentity
 import android.telephony.CellIdentityCdma
 import android.telephony.CellIdentityGsm
@@ -67,7 +68,7 @@ object CellSnapshot {
         out["deviceModel"] = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
 
         val subs = readSubscriptions(context, baseTm)
-        val sims = subs.map { sub -> readSim(baseTm, sub, hasLocation) }
+        val sims = subs.map { sub -> readSim(context, baseTm, sub, hasLocation) }
         out["sims"] = sims
         out["cellCount"] = sims.sumOf { (it["cells"] as? List<*>)?.size ?: 0 }
 
@@ -123,6 +124,7 @@ object CellSnapshot {
     }
 
     private fun readSim(
+        context: Context,
         baseTm: TelephonyManager?,
         sub: SubInfo,
         hasLocation: Boolean,
@@ -141,6 +143,46 @@ object CellSnapshot {
         m["simState"] = simStateName(safe { tm?.simState } ?: TelephonyManager.SIM_STATE_UNKNOWN)
         m["networkTypeName"] = networkTypeName(
             safe { tm?.dataNetworkType } ?: TelephonyManager.NETWORK_TYPE_UNKNOWN,
+        )
+        // Voice side of the slot. Both are public API, so they answer without
+        // Shizuku: the call state says whether a call is up, and the voice
+        // network type says what is carrying it — LTE for VoLTE, NR for VoNR,
+        // IWLAN for Wi-Fi calling. That is the only way to tell a VoLTE call
+        // from a VoNR one, since the data network type stays on NSA either way.
+        val callState = callStateName(
+            safe { tm?.callState } ?: TelephonyManager.CALL_STATE_IDLE,
+        )
+        m["callState"] = callState
+        // The network carrying voice, and there is only ever one: IWLAN while
+        // Wi-Fi calling is registered, NR on a VoNR call, LTE for VoLTE. That
+        // is what lets the page name the path in use instead of listing every
+        // path the network could offer.
+        val voiceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            safe { tm?.voiceNetworkType }
+                ?.takeIf { it != TelephonyManager.NETWORK_TYPE_UNKNOWN }
+        } else {
+            null
+        }
+        if (voiceType != null) m["voiceNetworkType"] = voiceType
+        // The data side, for the one case the voice type cannot cover: a phone
+        // registered for Wi-Fi calling but sitting idle reports IWLAN as its
+        // *data* network type while the voice type still says LTE.
+        val dataType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            safe { tm?.dataNetworkType }
+                ?.takeIf { it != TelephonyManager.NETWORK_TYPE_UNKNOWN }
+        } else {
+            null
+        }
+        // The privileged reading is fetched once here and reused below: it
+        // carries both the component carriers and the IMS state.
+        val privileged = PrivilegedRadio.detail(sub.subscriptionId)
+        m["ims"] = imsAvailability(
+            context = context,
+            subId = sub.subscriptionId,
+            callState = callState,
+            voiceType = voiceType,
+            dataType = dataType,
+            detail = privileged,
         )
 
         val signalStrength = safe { tm?.signalStrength }
@@ -237,9 +279,8 @@ object CellSnapshot {
         // Carrier detail, when Shizuku is lending its shell identity: one row
         // per aggregated carrier with its own width and technology. Empty
         // without it, and the card simply shows no such rows.
-        val detail = PrivilegedRadio.detail(sub.subscriptionId)
-        if (detail.carriers.isNotEmpty()) {
-            m["carriers"] = CarrierDetail.toMaps(detail)
+        if (privileged.carriers.isNotEmpty()) {
+            m["carriers"] = CarrierDetail.toMaps(privileged)
         }
 
         if (BuildConfig.DEBUG) {
@@ -653,6 +694,95 @@ object CellSnapshot {
         TelephonyManager.SIM_STATE_CARD_IO_ERROR -> "CARD_IO_ERROR"
         TelephonyManager.SIM_STATE_CARD_RESTRICTED -> "CARD_RESTRICTED"
         else -> "UNKNOWN"
+    }
+
+    private fun callStateName(state: Int): String = when (state) {
+        TelephonyManager.CALL_STATE_RINGING -> "ringing"
+        TelephonyManager.CALL_STATE_OFFHOOK -> "offhook"
+        else -> "idle"
+    }
+
+    /**
+     * VoLTE, VoNR and Wi-Fi calling, as the carrier bundle says they are
+     * available.
+     *
+     * These are the same `carrier_*_available_bool` flags the Settings app
+     * reads to decide whether to offer its switches for them, so they describe
+     * the network's capability rather than the current call: a phone that
+     * offers both VoLTE and Wi-Fi calling reports both, and neither cancels the
+     * other out. Every key is optional and differs per carrier bundle, so a
+     * missing one answers false instead of being guessed, and `known` says
+     * whether the config answered at all — a phone that will not hand it over
+     * shows nothing rather than claiming all three are off.
+     *
+     * `active` is the exclusive part, taken from the voice network type, and is
+     * the only one the page displays beside the mode.
+     */
+    private fun imsAvailability(
+        context: Context,
+        subId: Int,
+        callState: String,
+        voiceType: Int?,
+        dataType: Int?,
+        detail: CarrierDetail,
+    ): Map<String, Any?> {
+        // Wi-Fi calling is invisible to the public API while no call is up: the
+        // voice network type only answers IWLAN once a call is already running
+        // over it, so a registered Wi-Fi calling link looked like nothing at
+        // all until the first call. IMS answers, and only the shell identity
+        // can ask it.
+        //
+        // Two ways to know it is up. IMS answers directly when voice is
+        // registered over WLAN. When it says nothing — mid-handover, or a
+        // firmware that keeps the capability private — the user's switch plus
+        // an IWLAN data registration means the ePDG tunnel is carrying the IMS
+        // link, which is what that registration *is*. The switch is required:
+        // IWLAN on its own fires on plain Wi-Fi and is the false positive every
+        // other app shows as "Wi-Fi calling".
+        val vowifiRegistered = detail.ims?.vowifiAvailable == true ||
+            (detail.ims?.wfcSetting == true && dataType == TelephonyManager.NETWORK_TYPE_IWLAN)
+        // The exclusive half of the answer. A phone registers one voice path at
+        // a time, so this can only ever name one.
+        val active = when {
+            vowifiRegistered -> "vowifi"
+            voiceType == TelephonyManager.NETWORK_TYPE_IWLAN -> "vowifi"
+            voiceType == TelephonyManager.NETWORK_TYPE_NR -> "vonr"
+            voiceType == TelephonyManager.NETWORK_TYPE_LTE -> "volte"
+            voiceType == null -> null
+            // Anything older only carries a call, never sits idle.
+            callState == "idle" -> null
+            else -> "cs"
+        }
+
+        val configs =
+            context.getSystemService(Context.CARRIER_CONFIG_SERVICE) as? CarrierConfigManager
+        val bundle = try {
+            when {
+                configs == null -> null
+                subId > 0 -> configs.getConfigForSubId(subId)
+                else -> configs.config
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "carrier config unavailable: ${t.message}")
+            null
+        }
+        if (bundle == null) return mapOf("known" to false, "active" to active)
+        fun flag(key: String): Boolean = try {
+            bundle.getBoolean(key, false)
+        } catch (t: Throwable) {
+            false
+        }
+        return mapOf(
+            "known" to true,
+            "active" to active,
+            "volte" to flag(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL),
+            // Written out rather than referenced: the constant arrived in a much
+            // later SDK than this build's minSdk, and the key itself has been
+            // there since VoNR existed.
+            "vonr" to flag("carrier_vonr_available_bool"),
+            "vowifi" to (vowifiRegistered ||
+                flag(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL)),
+        )
     }
 
     private inline fun <T> safe(block: () -> T): T? = try {

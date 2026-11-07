@@ -23,6 +23,22 @@ data class RadioCarrier(
 )
 
 /**
+ * IMS voice availability, as IMS itself reports it.
+ *
+ * Null means the question could not be asked, which is different from false.
+ * A Wi-Fi calling registration is invisible to the public API while no call is
+ * up, so this is the only source that can name VoWiFi before the first call.
+ */
+data class ImsState(
+    /** Voice is available over WLAN: Wi-Fi calling is registered. */
+    val vowifiAvailable: Boolean?,
+    /** Voice is available over the cellular link: VoLTE or VoNR. */
+    val volteAvailable: Boolean?,
+    /** The user's Wi-Fi calling switch, or null when it could not be read. */
+    val wfcSetting: Boolean? = null,
+)
+
+/**
  * What the privileged reader returned for one subscription.
  *
  * Nothing here needs the Android framework: [parse] takes the JSON the user
@@ -30,7 +46,11 @@ data class RadioCarrier(
  * — the situation they describe (a modem running four aggregated carriers)
  * cannot be produced on demand.
  */
-data class CarrierDetail(val carriers: List<RadioCarrier>) {
+data class CarrierDetail(
+    val carriers: List<RadioCarrier>,
+    /** IMS voice state, or null when the reader could not ask. */
+    val ims: ImsState? = null,
+) {
 
     /** Aggregate downlink width across every component carrier. */
     val totalBandwidthKhz: Int get() = carriers.sumOf { it.bandwidthKhz }
@@ -72,7 +92,16 @@ data class CarrierDetail(val carriers: List<RadioCarrier>) {
                         pci = pci?.takeIf { it >= 0 },
                     )
                 }
-                CarrierDetail(carriers)
+                val ims = root.optJSONObject("ims")?.let { state ->
+                    fun flag(key: String): Boolean? =
+                        if (state.isNull(key)) null else state.optBoolean(key)
+                    ImsState(
+                        vowifiAvailable = flag("vowifi"),
+                        volteAvailable = flag("volte"),
+                        wfcSetting = flag("wfc"),
+                    )
+                }
+                CarrierDetail(carriers, ims)
             } catch (error: Exception) {
                 EMPTY
             }

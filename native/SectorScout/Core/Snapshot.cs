@@ -33,7 +33,29 @@ public sealed class SimReading
     public string? NetworkTypeName { get; init; }
     public string? OverrideNetworkType { get; init; }
     public string? Plmn { get; init; }
+    public string? CallState { get; init; }
+    public int? VoiceNetworkType { get; init; }
+    public ImsState? Ims { get; init; }
     public List<CellReading> Cells { get; init; } = new();
+
+    public bool InCall => CallState is "ringing" or "offhook";
+}
+
+/// <summary>
+/// IMS voice state for one subscription, as the phone reports it.
+///
+/// <see cref="Active"/> is the one path carrying voice — a phone registers a
+/// single one — while the three flags say which services the network offers.
+/// Null when the phone's IMS reader is unavailable, which is why they are not
+/// used to name the path.
+/// </summary>
+public sealed class ImsState
+{
+    public bool Known { get; init; }
+    public bool Volte { get; init; }
+    public bool Vonr { get; init; }
+    public bool Vowifi { get; init; }
+    public string? Active { get; init; }
 }
 
 public sealed class CellReading

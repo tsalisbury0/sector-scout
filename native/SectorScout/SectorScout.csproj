@@ -9,7 +9,7 @@
     <AssemblyName>SectorScout</AssemblyName>
     <RootNamespace>SectorScout</RootNamespace>
     <ApplicationIcon>..\..\desktop\sector_scout.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
+    <Version>2.0.0-beta</Version>
     <Company>tsalisbury0</Company>
     <Product>Sector Scout Desktop</Product>
     <ApplicationManifest>app.manifest</ApplicationManifest>

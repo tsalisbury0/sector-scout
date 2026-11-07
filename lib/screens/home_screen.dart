@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cell_snapshot.dart';
+import '../services/app_settings.dart';
 import '../services/ble_link.dart';
+import '../services/carrier_detail.dart';
 import '../services/carrier_names.dart';
 import '../services/cell_tower_service.dart';
 import '../services/lan_discovery.dart';
@@ -16,8 +19,12 @@ import 'settings_screen.dart';
 import '../theme/app_colors.dart';
 import '../widgets/note_help.dart';
 import '../widgets/signal_bars.dart';
-import '../widgets/tech_badge.dart';
+import '../widgets/scanner_ui.dart';
 import '../widgets/update_notice.dart';
+
+// The readout widgets live in their own file so the phone page, the tests
+// and any later surface draw the same thing.
+export '../widgets/scanner_ui.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -50,6 +57,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// One page per SIM, swiped left/right.
   final PageController _pageController = PageController();
   int _pageIndex = 0;
+
+  /// Which block of the reading the strip has open: Cell, Radio,
+  /// Carriers or Neighbours.
+  int _tab = 0;
+
+  /// What the privileged reader is doing, so the Carriers tab can offer the one
+  /// step that would turn it on instead of vanishing while it is off.
+  final CarrierDetailService _carrierDetail = CarrierDetailService();
+  CarrierDetailStatus? _carrierStatus;
+
+  /// The last [_traceLength] readings of every leg each slot's header draws,
+  /// oldest first, keyed by slot and then by the caption the header gives the
+  /// leg, so each figure can plot its own history.
+  final Map<int, Map<String, List<int?>>> _traces =
+      <int, Map<String, List<int?>>>{};
+  static const int _traceLength = 60;
 
   /// Optional Wi-Fi share of the current reading.
   final LanSharingServer _share = LanSharingServer();
@@ -92,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
     _loadCarrierNames();
+    _refreshCarrierStatus();
     _notification.isOn().then((on) {
       if (mounted && on != _notificationOn) {
         setState(() => _notificationOn = on);
@@ -106,6 +130,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // learn the answer once it is back in front.
     if (state == AppLifecycleState.resumed) {
       _refreshBackgroundState();
+      // The reader is set up outside the app, so its state is re-read on return
+      // — the user may have just come back from the store or from Shizuku.
+      _refreshCarrierStatus();
       _notification.isOn().then((on) {
         if (mounted && on != _notificationOn) {
           setState(() => _notificationOn = on);
@@ -216,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _error = null;
           _live = true;
           _clearRecoveredNotices(snapshot);
+          _recordTrace(snapshot);
         });
       },
       onError: (Object error) {
@@ -226,6 +254,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       },
     );
+  }
+
+  /// Re-reads what the privileged reader is doing.
+  Future<void> _refreshCarrierStatus() async {
+    final status = await _carrierDetail.status();
+    if (mounted) setState(() => _carrierStatus = status);
+  }
+
+  /// The one step that moves the reader forward — install, start, grant, or turn
+  /// it back on — then re-reads where it landed.
+  Future<void> _advanceCarrierDetail() async {
+    switch (_carrierStatus?.state) {
+      case CarrierDetailState.noPermission:
+        await _carrierDetail.request();
+      case CarrierDetailState.notRunning:
+      case CarrierDetailState.unsupported:
+        await _carrierDetail.openShizuku();
+      case CarrierDetailState.disabled:
+        await AppSettings.setCarrierDetail(true);
+        await _carrierDetail.setEnabled(true);
+      case CarrierDetailState.notInstalled:
+        await _openPlayStore();
+      case _:
+        break;
+    }
+    await _refreshCarrierStatus();
+  }
+
+  /// Shizuku's store page, with the web listing as the fallback for a phone with
+  /// no store that handles `market:`.
+  Future<void> _openPlayStore() async {
+    if (await _openUri('market://details?id=moe.shizuku.privileged.api')) return;
+    await _openUri(
+      'https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api',
+    );
+  }
+
+  Future<void> _openShizukuGithub() async {
+    if (await _openUri('https://github.com/RikkaApps/Shizuku/releases')) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No app on this phone could open that link.')),
+    );
+  }
+
+  /// Opens a link outside the app; false when nothing took it.
+  Future<bool> _openUri(String url) async {
+    try {
+      return await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Keeps a short rolling history of every leg the header draws — the anchor,
+  /// the NR secondary and any SDL layer — keyed by the caption the header gives
+  /// it, so each figure plots the reading printed above it.
+  void _recordTrace(CellSnapshot snapshot) {
+    for (final sim in snapshot.sims) {
+      final slot = _traces.putIfAbsent(
+        sim.slotIndex,
+        () => <String, List<int?>>{},
+      );
+      for (final leg in headerLegs(sim)) {
+        final trace = slot.putIfAbsent(leg.$1, () => <int?>[]);
+        trace.add(leg.$2.dbm);
+        if (trace.length > _traceLength) trace.removeAt(0);
+      }
+    }
   }
 
   Future<void> _refresh() async {
@@ -239,6 +339,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _snapshot = snapshot;
         _error = null;
         _clearRecoveredNotices(snapshot);
+        _recordTrace(snapshot);
       });
     } catch (error) {
       if (!mounted) return;
@@ -573,7 +674,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             const Text(
               'Sector Scout',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -867,10 +968,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     required bool showNeighbours,
     required bool sharedNeighbours,
   }) {
-    final prefix = dual ? '${sim.label} · ' : '';
     final problem = sim.problem(locationEnabled: snapshot.locationEnabled);
-    final lte = sim.lteServing;
-    final nr = sim.nrServing;
+    final hasNeighbours = sim.cells.isNotEmpty && showNeighbours;
+
+    // Carriers stays even with nothing to draw: that panel is where a reader
+    // without Shizuku learns how to get it, so hiding the tab hid the only
+    // route to the feature as well.
+    final tabs = <String>[
+      'Cell',
+      'Radio',
+      'Carriers',
+      if (hasNeighbours) 'Neighbours',
+    ];
+    final index = _tab.clamp(0, tabs.length - 1);
 
     return [
       SimHeaderCard(
@@ -878,6 +988,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         dual: dual,
         capturedAt: snapshot.capturedAt,
         carrierName: _carrierName(sim),
+        traces: _traces[sim.slotIndex],
       ),
       if ((!sim.hasSim || sim.cells.isEmpty) && !_isDismissed(sim))
         Padding(
@@ -888,125 +999,106 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onDismiss: () => _dismissNotice(sim),
           ),
         ),
-      // A slot the platform calls empty can still report a cell (the A10e does
-      // exactly this), so the modem's own list decides whether there is
-      // anything to show.
       if (sim.serving != null) ...[
-        const SizedBox(height: 20),
-        _SectionLabel(
-          sim.isNsa && lte != null && nr != null
-              ? '${prefix}4G anchor'
-              : '$prefix${sim.isSa ? '5G NR' : 'Serving cell'}',
-          note: _servingNote(sim, nr),
+        const SizedBox(height: 12),
+        ScannerTabs(
+          tabs: tabs,
+          index: index,
+          onTap: (value) {
+            setState(() => _tab = value);
+            // Opening Carriers re-reads the reader: it may have been started or
+            // granted from another app since this page was built.
+            if (tabs[value] == 'Carriers') unawaited(_refreshCarrierStatus());
+          },
         ),
-        const SizedBox(height: 8),
-        _DetailCard(
-          // [SimReading.serving] prefers the NR leg so the header meter has a
-          // cell to read, but the anchor card must show the LTE cell itself —
-          // otherwise an NSA pair renders the 5G card twice and the eNB,
-          // sector and anchor band disappear.
-          entries: _servingEntries(
-            sim.isNsa && lte != null && nr != null ? lte : sim.serving!,
-            sim: sim,
-          ),
+        ..._tabPanel(
+          sim,
+          tabs[index],
+          dual: dual,
+          sharedNeighbours: sharedNeighbours,
         ),
-        if (sim.isNsa && lte != null && nr != null) ...[
-          const SizedBox(height: 16),
-          _SectionLabel(
-            '${prefix}5G NR secondary',
-            note: nr.gnb == null
-                ? (sim.nsaGnbEstimate != null
-                      ? 'This radio hides the NR cell identity while NSA is '
-                            'up, so the gNB marked “est.” is derived from the '
-                            'LTE anchor. There is no sector to report without '
-                            'the NCI; PCI, band and ARFCN are reported '
-                            'directly.'
-                      : 'This radio hides the NR cell identity while NSA is '
-                            'up, so gNB and sector are unavailable — PCI, band '
-                            'and ARFCN still identify the carrier.')
-                : null,
-          ),
-          const SizedBox(height: 8),
-          _DetailCard(
-            entries: _servingEntries(
-              nr,
-              gnbEstimate: sim.nsaGnbEstimate,
-              sim: sim,
-            ),
-          ),
-        ],
-        // An LTE supplemental downlink only shows up once it is aggregated
-        // under the primary, and it arrives with no ECI at all, so there is no
-        // eNB or sector to draw. CellMapper shows the same carrier and the
-        // same gap.
-        if (sim.lteSecondaries.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _SectionLabel(
-            '${prefix}4G LTE SDL',
-            note:
-                'Supplemental downlinks are aggregated under the primary LTE '
-                'cell. Every downlink-only LTE band is covered — 29, 32, 67, '
-                '69, 75 and 76 — not only band 29. The radio reports one with a '
-                'PCI, band and channel but no cell identity, so there is no '
-                'eNB, sector or TAC to show, and no uplink frequency, because '
-                'the band has none. Its MCC/MNC only come through while it is '
-                'carrying data, which is why the PLMN falls back to the '
-                'network the primary cell is registered on.',
-          ),
-          const SizedBox(height: 8),
-          for (final secondary in sim.lteSecondaries) ...[
-            _DetailCard(
-              // The bars for this layer live on the top card, next to the
-              // anchor's, so this card stays a plain set of readings.
-              entries: _servingEntries(
-                secondary,
-                fallbackPlmn: sim.registeredPlmn,
-                sim: sim,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ],
-        // The carriers the radio is actually running together, straight from
-        // the privileged reader: a separate card, because this is aggregation
-        // rather than a property of the one cell above it.
-        if (sim.carriers.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          _SectionLabel(
-            '${prefix}Carrier aggregation',
-            note:
-                'Each component carrier the radio is running, with its own '
-                'downlink width and technology, read through Shizuku. The '
-                'widths add up, and the aggregate is what the link can use at '
-                'once — a single carrier is listed too, with no aggregation '
-                'behind it.',
-          ),
-          const SizedBox(height: 8),
-          _CarrierCard(
-            rows: ServingView.carrierRows(sim),
-            totals: ServingView.carrierTotals(sim),
-          ),
-        ],
-        const SizedBox(height: 20),
-        _SectionLabel('${prefix}Radio quality'),
-        const SizedBox(height: 8),
-        _DetailCard(entries: _qualityEntries(sim)),
       ] else if (sim.cells.isNotEmpty) ...[
-        // Cells but no registration: on a dual-SIM modem this happens when the
-        // other slot is carrying the radio. Say so instead of presenting the
-        // neighbour scan as a serving cell.
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
         const _NoticeCard(
           icon: Icons.portable_wifi_off_rounded,
           message:
               'No cell on this SIM is registered right now, so there is no '
               'serving cell to show. Its neighbours are still listed below.',
         ),
+        if (hasNeighbours) ...[
+          const SizedBox(height: 14),
+          _NeighbourCard(neighbours: sim.neighbours),
+        ],
       ],
-      if (sim.cells.isNotEmpty) ...[
-        if (showNeighbours) ...[
-          const SizedBox(height: 20),
-          _SectionLabel(
+    ];
+  }
+
+  /// The block of the reading the strip has selected.
+  List<Widget> _tabPanel(
+    SimReading sim,
+    String tab, {
+    required bool dual,
+    required bool sharedNeighbours,
+  }) {
+    final prefix = dual ? '${sim.label} · ' : '';
+    final lte = sim.lteServing;
+    final nr = sim.nrServing;
+    final paired = sim.isNsa && lte != null && nr != null;
+
+    switch (tab) {
+      case 'Radio':
+        return [
+          const SizedBox(height: 6),
+          ScannerRows(entries: _qualityEntries(sim)),
+        ];
+      case 'Carriers':
+        if (sim.carriers.isEmpty) {
+          return [
+            const SizedBox(height: 6),
+            ScannerSection(
+              'Component carriers',
+              note:
+                  'Only the privileged reader exposes component carriers, so '
+                  'this is the one place the width of each layer is visible.',
+            ),
+            const SizedBox(height: 12),
+            _CarrierSetup(
+              status: _carrierStatus,
+              onAction: () => unawaited(_advanceCarrierDetail()),
+              onGithub: () => unawaited(_openShizukuGithub()),
+            ),
+          ];
+        }
+        return [
+          const SizedBox(height: 6),
+          ScannerSection(
+            'Component carriers',
+            note:
+                'Only the privileged reader exposes component carriers, so '
+                'this is the one place the width of each layer is visible.',
+          ),
+          const SizedBox(height: 10),
+          AggregationBar(carriers: sim.carriers),
+          const SizedBox(height: 6),
+          Text(
+            '${sim.carriers.length} '
+            '${sim.carriers.length == 1 ? 'carrier' : 'carriers'} · '
+            '${ServingView.shortMhz(sim.aggregatedBandwidthMhz)} MHz total',
+            style: monospace.copyWith(
+              fontSize: 10,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _CarrierCard(
+            rows: ServingView.carrierRows(sim),
+            totals: ServingView.carrierTotals(sim),
+          ),
+        ];
+      case 'Neighbours':
+        return [
+          const SizedBox(height: 6),
+          ScannerSection(
             '${prefix}Neighbour cells'
             '${sim.neighbours.isEmpty ? '' : ' (${sim.neighbours.length})'}'
             '${sharedNeighbours ? ' · shared radio' : ''}',
@@ -1015,11 +1107,75 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       'rows are identified by PCI and band instead.'
                 : null,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 2),
           _NeighbourCard(neighbours: sim.neighbours),
-        ],
-      ],
-    ];
+        ];
+      default:
+        return [
+          const SizedBox(height: 6),
+          ScannerSection(
+            paired
+                ? '${prefix}4G anchor'
+                : '$prefix${sim.isSa ? '5G NR' : 'Serving cell'}',
+            note: _servingNote(sim, nr),
+          ),
+          const SizedBox(height: 2),
+          ScannerRows(
+            entries: _servingEntries(paired ? lte : sim.serving!, sim: sim),
+          ),
+          if (paired) ...[
+            const SizedBox(height: 18),
+            ScannerSection(
+              '${prefix}5G NR secondary',
+              note: nr.gnb == null
+                  ? (sim.nsaGnbEstimate != null
+                        ? 'This radio hides the NR cell identity while NSA is '
+                              'up, so the gNB marked “est.” is derived from the '
+                              'LTE anchor. There is no sector to report without '
+                              'the NCI; PCI, band and ARFCN are reported '
+                              'directly.'
+                        : 'This radio hides the NR cell identity while NSA is '
+                              'up, so gNB and sector are unavailable — PCI, band '
+                              'and ARFCN still identify the carrier.')
+                  : null,
+            ),
+            const SizedBox(height: 2),
+            ScannerRows(
+              entries: _servingEntries(
+                nr,
+                gnbEstimate: sim.nsaGnbEstimate,
+                sim: sim,
+              ),
+            ),
+          ],
+          if (sim.lteSecondaries.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            ScannerSection(
+              '${prefix}4G LTE SDL',
+              note:
+                  'Supplemental downlinks are aggregated under the primary LTE '
+                  'cell. Every downlink-only LTE band is covered — 29, 32, 67, '
+                  '69, 75 and 76 — not only band 29. The radio reports one with '
+                  'a PCI, band and channel but no cell identity, so there is no '
+                  'eNB, sector or TAC to show, and no uplink frequency, because '
+                  'the band has none. Its MCC/MNC only come through while it is '
+                  'carrying data, which is why the PLMN falls back to the '
+                  'network the primary cell is registered on.',
+            ),
+            const SizedBox(height: 2),
+            for (final secondary in sim.lteSecondaries) ...[
+              ScannerRows(
+                entries: _servingEntries(
+                  secondary,
+                  fallbackPlmn: sim.registeredPlmn,
+                  sim: sim,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ];
+    }
   }
 
   String _carrierName(SimReading sim) => ServingView.carrierName(sim);
@@ -1071,13 +1227,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppColors.radius),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.sensors_rounded, size: 32, color: AppColors.accent),
+          const Icon(Icons.sensors_rounded, size: 28, color: AppColors.accent),
           const SizedBox(height: 16),
           const Text(
             'Location access needed',
@@ -1138,404 +1294,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 ///
 /// NSA shows the LTE anchor and the 5G secondary as two meters; SA and
 /// LTE-only use the single meter, exactly as requested.
-class SimHeaderCard extends StatelessWidget {
-  const SimHeaderCard({
-    super.key,
-    required this.sim,
-    required this.dual,
-    required this.capturedAt,
-    this.carrierName,
-  });
-
-  final SimReading sim;
-  final bool dual;
-  final DateTime capturedAt;
-
-  /// Brand resolved from the PLMN; falls back to the SIM's own name.
-  final String? carrierName;
-
-  @override
-  Widget build(BuildContext context) {
-    final lte = sim.lteServing;
-    final nr = sim.nrServing;
-    final serving = sim.serving;
-    final badge = badgeForSim(sim);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        gradient: const LinearGradient(
-          colors: [AppColors.surface, AppColors.surfaceAlt],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            carrierName ??
-                                (sim.carrierName.isEmpty
-                                    ? sim.label
-                                    : sim.carrierName),
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                        // The technology reads as part of the name now: plain
-                        // text to its right, then the slot. It stays put when
-                        // the mode chip greys out — an LTE anchor with its 5G
-                        // leg gone still reads LTE.
-                        //
-                        // A satellite link shows `SAT` here instead. The two
-                        // never appear together: one names the path, the other
-                        // names the radio.
-                        if (sim.isSatellite) ...[
-                          const SizedBox(width: 7),
-                          const SatelliteTag(),
-                        ] else if (badge != null) ...[
-                          const SizedBox(width: 7),
-                          TechBadge(label: badge),
-                        ],
-                        if (dual) ...[
-                          const SizedBox(width: 8),
-                          _SlotBadge(label: sim.label),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    const Text(
-                      'SERVING CELL',
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 1.1,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Green only while the 5G leg is really there: with the NR
-              // carrier gone the chip keeps the words but drops the colour.
-              // An `lteM`-tagged network reads `4G LTE-M` here instead of
-              // `4G LTE`, without claiming the 5G colour.
-              _TechChip(
-                label: sim.modeLabel,
-                // Green while the leg is really up: an NR cell attached, or the
-                // platform's own NR state saying CONNECTED.
-                attached: (sim.isNsa && nr != null) || sim.nrConnected,
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          // Every radio the slot is running at once, side by side: an
-          // aggregated LTE carrier is only worth knowing about relative to the
-          // anchor it is bolted onto, so it belongs on this card rather than
-          // three sections down.
-          _SignalRow(
-            legs: [
-              if (sim.isNsa && lte != null && nr != null) ...[
-                ('LTE anchor', lte),
-                ('5G NR', nr),
-              ] else if (serving != null)
-                (sim.isSa ? '5G NR' : 'LTE', serving),
-              for (var i = 0; i < sim.lteSecondaries.length; i++)
-                (
-                  sim.lteSecondaries.length == 1
-                      ? 'LTE SDL'
-                      : 'LTE SDL ${i + 1}',
-                  sim.lteSecondaries[i],
-                ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Container(height: 1, color: AppColors.border),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.schedule_rounded,
-                size: 13,
-                color: AppColors.textMuted,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Updated ${_clock(capturedAt)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  '${sim.cells.length} '
-                  'cell${sim.cells.length == 1 ? '' : 's'} visible',
-                  maxLines: 1,
-                  textAlign: TextAlign.end,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Single meter, used for LTE-only and for SA (5G on its own).
-class _PrimaryMeter extends StatelessWidget {
-  const _PrimaryMeter({required this.cell});
-
-  final CellTower? cell;
-
-  @override
-  Widget build(BuildContext context) {
-    final bars = cell?.bars ?? 0;
-    final color = AppColors.forBars(bars);
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        SignalBars(bars: bars, height: 62, barWidth: 11, gap: 6),
-        const SizedBox(width: 18),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    cell?.dbm?.toString() ?? '—',
-                    style: monospace.copyWith(
-                      fontSize: 34,
-                      height: 1,
-                      fontWeight: FontWeight.w400,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'dBm',
-                    style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                SignalQuality.label(bars),
-                style: TextStyle(fontSize: 12, color: color),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The meter row on the top card, one meter per radio the slot is running.
-///
-/// A single radio keeps the full-size meter; two or more share the row, and
-/// from three on they drop to a tighter set of bars so three meters still fit
-/// across a phone without the numbers being clipped.
-class _SignalRow extends StatelessWidget {
-  const _SignalRow({required this.legs});
-
-  final List<(String, CellTower)> legs;
-
-  @override
-  Widget build(BuildContext context) {
-    if (legs.isEmpty) return const SizedBox.shrink();
-    if (legs.length == 1) return _PrimaryMeter(cell: legs.single.$2);
-
-    final compact = legs.length > 2;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < legs.length; i++) ...[
-          if (i > 0) ...[
-            Container(
-              width: 1,
-              height: compact ? 48 : 62,
-              color: AppColors.border,
-            ),
-            SizedBox(width: compact ? 8 : 16),
-          ],
-          Expanded(
-            child: _LegMeter(
-              label: legs[i].$1,
-              cell: legs[i].$2,
-              compact: compact,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// One leg of an NSA pair: LTE anchor or 5G NR secondary.
-class _LegMeter extends StatelessWidget {
-  const _LegMeter({
-    required this.label,
-    required this.cell,
-    this.compact = false,
-  });
-
-  final String label;
-  final CellTower cell;
-
-  /// Tighter bars and type, for a row carrying three or more meters.
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final bars = cell.bars;
-    final color = AppColors.forBars(bars);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: compact ? 8.5 : 9.5,
-            letterSpacing: 1,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textMuted,
-          ),
-        ),
-        SizedBox(height: compact ? 8 : 10),
-        Row(
-          children: [
-            SignalBars(
-              bars: bars,
-              height: compact ? 30 : 40,
-              barWidth: compact ? 6 : 8,
-              gap: compact ? 3 : 4,
-            ),
-            SizedBox(width: compact ? 7 : 10),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    cell.dbm?.toString() ?? '—',
-                    style: monospace.copyWith(
-                      fontSize: compact ? 17 : 21,
-                      height: 1,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'dBm',
-                    style: TextStyle(
-                      fontSize: compact ? 8.5 : 9.5,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: compact ? 4 : 6),
-        Text(
-          SignalQuality.label(bars),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: compact ? 10 : 11, color: color),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared pieces
-// ---------------------------------------------------------------------------
-
-class _DetailCard extends StatelessWidget {
-  const _DetailCard({required this.entries});
-
-  final List<MapEntry<String, String>> entries;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < entries.length; i++) ...[
-            if (i > 0)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(height: 1, color: AppColors.border),
-              ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      entries[i].key,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    entries[i].value,
-                    style: monospace.copyWith(
-                      fontSize: 13,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _NeighbourCard extends StatelessWidget {
   const _NeighbourCard({required this.neighbours});
 
@@ -1549,7 +1307,7 @@ class _NeighbourCard extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppColors.radius),
           border: Border.all(color: AppColors.border),
         ),
         child: const Text(
@@ -1566,7 +1324,7 @@ class _NeighbourCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppColors.radius),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -1624,7 +1382,7 @@ class _NeighbourRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
               color: AppColors.surfaceAlt,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(3),
               border: Border.all(color: AppColors.border),
             ),
             child: Text(
@@ -1705,7 +1463,7 @@ class _CarrierCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppColors.radius),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
@@ -1773,7 +1531,7 @@ class _CarrierRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
               color: AppColors.surfaceAlt,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(3),
               border: Border.all(color: AppColors.border),
             ),
             child: Text(
@@ -1839,101 +1597,32 @@ class _CarrierRow extends StatelessWidget {
   }
 }
 
-class _SlotBadge extends StatelessWidget {
-  const _SlotBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-          color: AppColors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _TechChip extends StatelessWidget {
-  const _TechChip({required this.label, this.attached = true});
-
-  final String label;
-
-  /// False when the label names 5G but no NR carrier is attached right now —
-  /// the platform keeps reporting `NR_NSA` for a while after the leg is gone.
-  final bool attached;
-
-  @override
-  Widget build(BuildContext context) {
-    final is5g = attached && label.contains('5G');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: (is5g ? AppColors.accent : AppColors.textMuted).withValues(
-          alpha: 0.12,
-        ),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: (is5g ? AppColors.accent : AppColors.textMuted).withValues(
-            alpha: 0.35,
-          ),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-          color: is5g ? AppColors.accent : AppColors.textPrimary,
-        ),
-      ),
-    );
-  }
-}
-
 class _LiveChip extends StatelessWidget {
   const _LiveChip();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
-      ),
+    // A dot and a word, not a pill: the state belongs to the header, and a
+    // second bordered box up there competes with the reading below it.
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 6,
-            height: 6,
+            width: 5,
+            height: 5,
             decoration: const BoxDecoration(
               color: AppColors.accent,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 5),
-          const Text(
+          Text(
             'LIVE',
-            style: TextStyle(
+            style: monospace.copyWith(
               fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
+              letterSpacing: 0.4,
               color: AppColors.accent,
             ),
           ),
@@ -1959,16 +1648,21 @@ class _NoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppColors.radius),
+        border: Border(
+          left: BorderSide(color: AppColors.warning, width: 2),
+          top: const BorderSide(color: AppColors.border),
+          right: const BorderSide(color: AppColors.border),
+          bottom: const BorderSide(color: AppColors.border),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: AppColors.warning),
+          Icon(icon, size: 16, color: AppColors.warning),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -2014,11 +1708,16 @@ class _BackgroundCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppColors.radius),
+        border: Border(
+          left: BorderSide(color: AppColors.warning, width: 2),
+          top: const BorderSide(color: AppColors.border),
+          right: const BorderSide(color: AppColors.border),
+          bottom: const BorderSide(color: AppColors.border),
+        ),
       ),
       child: Row(
         children: [
@@ -2080,18 +1779,23 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppColors.radius),
+        border: Border(
+          left: BorderSide(color: AppColors.danger, width: 2),
+          top: const BorderSide(color: AppColors.border),
+          right: const BorderSide(color: AppColors.border),
+          bottom: const BorderSide(color: AppColors.border),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
             Icons.error_outline_rounded,
-            size: 18,
+            size: 16,
             color: AppColors.danger,
           ),
           const SizedBox(width: 10),
@@ -2120,7 +1824,7 @@ class _LoadingCard extends StatelessWidget {
       height: 180,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppColors.radius),
         border: Border.all(color: AppColors.border),
       ),
       child: const Center(
@@ -2135,43 +1839,6 @@ class _LoadingCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text, {this.note});
-
-  final String text;
-
-  /// The explanation behind this section's circled question mark.
-  final String? note;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        fontSize: 10,
-        letterSpacing: 1.1,
-        fontWeight: FontWeight.w600,
-        color: AppColors.textMuted,
-      ),
-    );
-    final note = this.note;
-    if (note == null) return label;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(child: label),
-        const SizedBox(width: 4),
-        NoteHelp(note, label: text),
-      ],
-    );
-  }
-}
-
-String _clock(DateTime time) {
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
 }
 
 /// Shares this phone's reading, over Wi-Fi or Bluetooth.
@@ -3038,6 +2705,117 @@ class _TransportPicker extends StatelessWidget {
 }
 
 /// Page indicator for the per-SIM pages.
+/// The Carriers tab with nothing to draw: what the reader is doing, and the one
+/// step that would change it.
+///
+/// The tab used to disappear whenever the reader was off, which hid both the
+/// feature and every route to it — a phone without Shizuku was never told that
+/// component carriers exist at all.
+class _CarrierSetup extends StatelessWidget {
+  const _CarrierSetup({
+    required this.status,
+    required this.onAction,
+    required this.onGithub,
+  });
+
+  final CarrierDetailStatus? status;
+  final VoidCallback onAction;
+  final VoidCallback onGithub;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = this.status;
+    final state = status?.state;
+    final notInstalled = state == CarrierDetailState.notInstalled;
+    final action = switch (state) {
+      CarrierDetailState.notInstalled => 'Play Store',
+      CarrierDetailState.noPermission => 'Grant',
+      CarrierDetailState.notRunning => 'Open Shizuku',
+      CarrierDetailState.unsupported => 'Open Shizuku',
+      CarrierDetailState.disabled => 'Turn on',
+      CarrierDetailState.ready => 'Refresh',
+      _ => 'Check',
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          top: BorderSide(color: AppColors.border),
+          bottom: BorderSide(color: AppColors.border),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            status?.label ?? 'Asking the phone what the reader is doing…',
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.45,
+              color: AppColors.textMuted,
+            ),
+          ),
+          if (notInstalled) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Shizuku needs no root, but it has to be started once over adb or '
+              'from wireless debugging. Version 13 or newer.',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.45,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _SetupButton(label: action, onPressed: onAction),
+              if (notInstalled)
+                _SetupButton(label: 'GitHub', onPressed: onGithub),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A flat, hairline action on the readout.
+class _SetupButton extends StatelessWidget {
+  const _SetupButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.accent,
+        side: const BorderSide(color: AppColors.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppColors.radius),
+        ),
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        textStyle: const TextStyle(
+          fontSize: 10.5,
+          letterSpacing: 0.8,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      child: Text(label.toUpperCase()),
+    );
+  }
+}
+
 class _PageDots extends StatelessWidget {
   const _PageDots({required this.count, required this.index});
 

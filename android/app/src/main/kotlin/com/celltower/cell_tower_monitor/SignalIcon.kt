@@ -152,13 +152,19 @@ object SignalIcon {
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ink
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            // Condensed bold. The widest label is four characters and the icon
+            // is square, so width is what caps the size: narrower glyphs are
+            // what let the badge actually grow rather than being shrunk back to
+            // the same width as before.
+            typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+                ?: Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
 
-        // Start tall and shrink until the widest label fits the icon box.
-        paint.textSize = size * 0.52f
-        val widest = size * 0.96f
+        // Start tall and shrink only as far as the width needs: the shade's own
+        // slot is generous, so the glyphs fill it.
+        paint.textSize = size * 0.72f
+        val widest = size * 0.98f
         val measured = paint.measureText(label)
         if (measured > widest) paint.textSize *= widest / measured
 

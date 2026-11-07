@@ -243,6 +243,25 @@ public partial class MainWindow : Window
         DockPanel.SetDock(badge, Dock.Right);
         header.Children.Add(badge);
 
+        // The voice path sits to the left of the technology badge, and is lit
+        // only while a call is up, so it reads as what is in use rather than as
+        // another static caption.
+        var voice = Labels.Voice(sim);
+        if (voice.Length > 0)
+        {
+            var path = new TextBlock
+            {
+                Text = voice,
+                Foreground = sim.InCall ? AccentBrush : MutedBrush,
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0),
+            };
+            DockPanel.SetDock(path, Dock.Right);
+            header.Children.Add(path);
+        }
+
         var carrier = new TextBlock
         {
             Text = (showSlot ? $"SIM {sim.SlotIndex + 1}  " : string.Empty) + (sim.CarrierName ?? "unknown network"),

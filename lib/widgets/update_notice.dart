@@ -52,7 +52,7 @@ class UpdateNotice extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppColors.radius),
               border: Border.all(color: AppColors.border),
             ),
             child: Row(

@@ -152,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text(
               'Settings',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
             Text(
               'Display corrections and alerts',
@@ -333,8 +333,8 @@ class _SectionLabel extends StatelessWidget {
     final label = Text(
       text.toUpperCase(),
       style: const TextStyle(
-        fontSize: 10,
-        letterSpacing: 1.1,
+        fontSize: 9.5,
+        letterSpacing: 0.8,
         fontWeight: FontWeight.w600,
         color: AppColors.textMuted,
       ),
@@ -362,7 +362,7 @@ class _SettingsCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppColors.radius),
         border: Border.all(color: AppColors.border),
       ),
       child: Column(children: children),

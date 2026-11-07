@@ -736,6 +736,56 @@ List<int> cellBands(CellTower cell) {
   return bands.toSet().toList();
 }
 
+/// VoLTE, VoNR and Wi-Fi calling, as the carrier bundle says they are
+/// available.
+///
+/// What the network can carry, and which of it is carrying voice right now.
+///
+/// The flags are capability, not use: a phone that offers both VoLTE and Wi-Fi
+/// calling reports both, so they are never the thing to display as the current
+/// path. [active] is: one voice registration at a time, taken from the voice
+/// network type, so exactly one of these is ever named.
+class ImsAvailability {
+  const ImsAvailability({
+    this.known = false,
+    this.volte = false,
+    this.vonr = false,
+    this.vowifi = false,
+    this.active,
+  });
+
+  factory ImsAvailability.fromMap(Map<Object?, Object?>? map) {
+    if (map == null) return const ImsAvailability();
+    return ImsAvailability(
+      known: map['known'] == true,
+      volte: map['volte'] == true,
+      vonr: map['vonr'] == true,
+      vowifi: map['vowifi'] == true,
+      active: map['active'] as String?,
+    );
+  }
+
+  /// False when the phone would not hand its carrier config over at all.
+  final bool known;
+  final bool volte;
+  final bool vonr;
+  final bool vowifi;
+
+  /// The one path carrying voice: `volte`, `vonr`, `vowifi`, `cs`, or null when
+  /// the platform would not say (or voice is on a network with no IMS at all).
+  final String? active;
+
+  bool get any => volte || vonr || vowifi;
+
+  String? get activeLabel => switch (active) {
+        'volte' => 'VoLTE',
+        'vonr' => 'VoNR',
+        'vowifi' => 'VoWiFi',
+        'cs' => 'CS',
+        _ => null,
+      };
+}
+
 /// Everything read from one SIM slot.
 class SimReading {
   const SimReading({
@@ -750,6 +800,9 @@ class SimReading {
     this.nrState = '',
     this.nrSignal = false,
     this.carriers = const [],
+    this.callState = 'idle',
+    this.voiceNetworkType,
+    this.ims = const ImsAvailability(),
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -772,7 +825,9 @@ class SimReading {
           .whereType<Map<Object?, Object?>>()
           .map(RadioCarrier.fromMap)
           .toList(),
-
+      callState: _string(map['callState']) ?? 'idle',
+      voiceNetworkType: _int(map['voiceNetworkType']),
+      ims: ImsAvailability.fromMap(map['ims'] as Map<Object?, Object?>?),
     );
   }
 
@@ -803,6 +858,41 @@ class SimReading {
 
   /// Component carriers from the Shizuku reader, empty without it.
   final List<RadioCarrier> carriers;
+
+  /// `TelephonyManager.getCallState()`: `idle`, `ringing` or `offhook`.
+  final String callState;
+
+  /// `TelephonyManager.getVoiceNetworkType()` — the network carrying voice.
+  /// Null while idle, or when the platform kept quiet.
+  final int? voiceNetworkType;
+
+  /// What the carrier says the network can carry.
+  final ImsAvailability ims;
+
+  bool get inCall => callState == 'ringing' || callState == 'offhook';
+
+  /// `NETWORK_TYPE_LTE`, the voice-side network type behind a VoLTE call.
+  static const int _networkTypeLte = 13;
+
+  /// What a live call is being carried on: `VoLTE`, `VoNR`, `VoWiFi`, or `CS`
+  /// for a circuit-switched call on a network with no IMS voice.
+  String? get voiceLabel => switch (voiceNetworkType) {
+        13 => 'VoLTE',
+        20 => 'VoNR',
+        18 => 'VoWiFi',
+        3 || 5 || 6 || 7 || 8 || 9 || 10 || 15 => 'CS',
+        _ => null,
+      };
+
+  /// True while a VoLTE call has released the 5G leg.
+  ///
+  /// 5G NSA is unavailable during VoLTE calls: the secondary carrier is given
+  /// up for the duration, and the platform keeps reporting `NR_NSA` for a while
+  /// afterwards, so the mode chip would otherwise claim 5G for a link that is
+  /// back on LTE. Only an LTE voice network counts — a VoNR call keeps its NR
+  /// leg, and a Wi-Fi call leaves the cellular link alone.
+  bool get nsaReleasedForCall =>
+      inCall && isNsa && voiceNetworkType == _networkTypeLte;
 
   /// True when the platform says the NR leg is connected, cell or no cell.
   bool get nrConnected => nrState == 'CONNECTED' || nrSignal;
@@ -1004,7 +1094,11 @@ class SimReading {
     };
   }
 
-  String get modeLabel => switch (mode) {
+  String get modeLabel {
+    // A VoLTE call has dropped the NR leg, so the chip names what is carrying
+    // the call rather than repeating the platform's lingering NSA override.
+    if (nsaReleasedForCall) return isLteM ? '4G LTE-M' : '4G LTE';
+    return switch (mode) {
         NetworkMode.nsa => '5G NSA',
         NetworkMode.sa => '5G SA',
         // It is still an LTE radio; only the label changes, and only for a
@@ -1013,6 +1107,7 @@ class SimReading {
         NetworkMode.legacy => serving?.tech.label ?? networkTypeName,
         NetworkMode.unknown => networkTypeName,
       };
+  }
 
   /// Cells heard but not serving.
   ///

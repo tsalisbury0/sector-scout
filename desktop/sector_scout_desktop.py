@@ -252,6 +252,36 @@ def mode_of(sim: dict, cells: list[dict]) -> str:
     return sim.get("networkTypeName") or "No service"
 
 
+VOICE_LABELS = {
+    "volte": "VoLTE",
+    "vonr": "VoNR",
+    "vowifi": "VoWiFi",
+    "cs": "CS",
+}
+
+
+def in_call(sim: dict) -> bool:
+    """Whether a call is up on this slot, whichever radio is carrying it."""
+    return str(sim.get("callState") or "idle").lower() in ("ringing", "offhook")
+
+
+def voice_path(sim: dict) -> str:
+    """The one path carrying voice, written the way carriers write it.
+
+    IMS registers a single path at a time, so this names one — the card used to
+    list every service the network offered, which read as if VoLTE and VoWiFi
+    were both in use. An empty string means the phone did not say; a call with
+    no IMS answer is circuit-switched.
+    """
+    ims = sim.get("ims")
+    if isinstance(ims, dict):
+        active = ims.get("active")
+        if isinstance(active, str) and active.strip():
+            code = active.strip().lower()
+            return VOICE_LABELS.get(code, code.upper())
+    return "CS" if in_call(sim) else ""
+
+
 ATT_BADGE_PLMNS = frozenset({"310410", "310150", "310170", "310380", "313100"})
 VERIZON_PLMN = "311480"
 
@@ -3795,6 +3825,16 @@ class DesktopApp(tk.Tk):
         )
         chip.pack(side="right", anchor="ne")
 
+        voice = voice_path(sim)
+        if voice:
+            # Beside the mode chip and lit only while a call is up, so it reads
+            # as the path in use rather than as another static caption.
+            tk.Label(
+                head, text=voice, bg=SURFACE,
+                fg=ACCENT if in_call(sim) else MUTED,
+                font=("Segoe UI", 10, "bold"), padx=6,
+            ).pack(side="right", anchor="ne")
+
         names = tk.Frame(head, bg=SURFACE)
         names.pack(side="left", anchor="w", fill="x", expand=True)
         line = tk.Frame(names, bg=SURFACE)
@@ -4077,7 +4117,7 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "1.1.1-beta"
+APP_VERSION = "2.0.0-beta"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )

@@ -95,7 +95,10 @@ String? badgeForSim(SimReading sim) {
     plmn: primary?.plmn,
     // The NR cell when the radio publishes one; otherwise the platform's
     // own NR state, where a CONNECTED leg with no cell exposed is still 5G.
-    nrAttached: sim.nrServing != null || sim.nrConnected,
+    // A VoLTE call has released the NR leg, so the badge drops back with the
+    // mode chip instead of claiming 5G for a link that is back on LTE.
+    nrAttached:
+        (sim.nrServing != null || sim.nrConnected) && !sim.nsaReleasedForCall,
     aggregated: sim.lteAggregated,
     highBand: sim.nrHighBand,
   );
@@ -118,10 +121,10 @@ class SatelliteTag extends StatelessWidget {
   Widget build(BuildContext context) => const Text(
         'SAT',
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 10.5,
           height: 1.1,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
           color: AppColors.satellite,
         ),
       );
@@ -144,10 +147,10 @@ class TechBadge extends StatelessWidget {
     return Text(
       label,
       style: TextStyle(
-        fontSize: 11.5,
+        fontSize: 10.5,
         height: 1.1,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.6,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.3,
         color: fiveG ? AppColors.accent : AppColors.textMuted,
       ),
     );

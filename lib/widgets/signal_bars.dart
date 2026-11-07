@@ -51,15 +51,6 @@ class SignalBars extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: i < filled ? active : AppColors.track,
                     borderRadius: BorderRadius.circular(barWidth / 2),
-                    boxShadow: i < filled
-                        ? [
-                            BoxShadow(
-                              color: active.withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              spreadRadius: -2,
-                            ),
-                          ]
-                        : null,
                   ),
                 ),
               ),

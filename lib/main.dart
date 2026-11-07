@@ -81,6 +81,33 @@ class CellTowerApp extends StatelessWidget {
               bodyColor: AppColors.textPrimary,
               displayColor: AppColors.textPrimary,
             ),
+        // Every framed surface shares one small radius, so buttons, dialogs
+        // and panels line up instead of each carrying its own curve.
+        dialogTheme: DialogThemeData(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppColors.radius),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppColors.radius),
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppColors.radius),
+            ),
+          ),
+        ),
+        dividerTheme: const DividerThemeData(
+          color: AppColors.border,
+          space: 1,
+          thickness: 1,
+        ),
       ),
       home: _isDesktop ? const DesktopHome() : const HomeScreen(),
     );

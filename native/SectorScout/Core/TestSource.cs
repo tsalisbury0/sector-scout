@@ -117,6 +117,16 @@ public sealed class TestSource
                 networkTypeName = "LTE",
                 overrideNetworkType = "LTE_CA",
                 plmn = "310-410",
+                callState = "idle",
+                voiceNetworkType = 13,
+                ims = new
+                {
+                    known = true,
+                    volte = true,
+                    vonr = false,
+                    vowifi = true,
+                    active = "volte",
+                },
                 cells = new object[]
                 {
                     new

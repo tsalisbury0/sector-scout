@@ -80,10 +80,12 @@ class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.S
             // createForSubscriptionId keeps the answering SIM's own radio: a
             // dual-SIM phone otherwise reports the other slot's carriers.
             val tm = if (subId > 0) base.createForSubscriptionId(subId) else base
-            JSONObject()
+            val payload = JSONObject()
                 .put("uid", Process.myUid())
                 .put("carriers", carriers(tm, subId))
-                .toString()
+            // IMS rides along on the same call, so the app asks once for both.
+            ims(subId)?.let { payload.put("ims", it) }
+            payload.toString()
         }
     } catch (failure: Throwable) {
         // Nothing here may take the process down: the app polls this every few
@@ -95,6 +97,61 @@ class PrivilegedRadioService(private val context: Context?) : IPrivilegedRadio.S
     // ---------------------------------------------------------------------
     // Component carriers: band, width, technology, PCI
     // ---------------------------------------------------------------------
+
+    /**
+     * Whether voice is registered over WLAN and over the cellular link.
+     *
+     * `ImsMmTelManager.isAvailable(capability, transport)` is the only API that
+     * answers while no call is up: the public `getVoiceNetworkType()` reports
+     * IWLAN only once a call is already running over Wi-Fi, so a registered
+     * Wi-Fi calling link is invisible to the app until someone calls. The
+     * manager is hidden, which is why this runs with the shell identity.
+     */
+    private fun ims(subId: Int): JSONObject? = try {
+        val cls = Class.forName("android.telephony.ims.ImsMmTelManager")
+        val manager = cls
+            .getMethod("createForSubscriptionId", Int::class.javaPrimitiveType)
+            .invoke(null, subId)
+        if (manager == null) {
+            null
+        } else {
+            // MmTelCapabilities.CAPABILITY_TYPE_VOICE = 1,
+            // AccessNetworkConstants.TRANSPORT_TYPE_WLAN = 2, _WWAN = 1.
+            val available = try {
+                cls.getMethod(
+                    "isAvailable",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                )
+            } catch (olderRelease: Throwable) {
+                null
+            }
+            fun voice(transport: Int): Any? = try {
+                available?.invoke(manager, 1, transport)
+            } catch (failure: Throwable) {
+                null
+            }
+            // The user's own Wi-Fi calling switch. The capability answer can
+            // read false for a moment mid-handover, and a firmware that keeps
+            // it private answers nothing at all; the switch is what separates
+            // a real Wi-Fi calling registration from a plain IWLAN network
+            // type, which is the false positive the other apps show.
+            val wfc = try {
+                findMethod(manager, "isVoWiFiSettingEnabled", 0)?.invoke(manager) as? Boolean
+            } catch (failure: Throwable) {
+                null
+            }
+            val state = JSONObject()
+                .put("vowifi", voice(2) ?: JSONObject.NULL)
+                .put("volte", voice(1) ?: JSONObject.NULL)
+                .put("wfc", wfc ?: JSONObject.NULL)
+            Log.d(TAG, "ims sub $subId: $state")
+            state
+        }
+    } catch (failure: Throwable) {
+        Log.d(TAG, "IMS state unavailable: ${failure.message}")
+        null
+    }
 
     /**
      * The carriers the radio is running right now.

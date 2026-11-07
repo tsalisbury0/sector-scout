@@ -22,6 +22,26 @@ public static class Labels
         return "LTE";
     }
 
+    /// <summary>
+    /// The path carrying voice, written the way carriers write it: VoLTE, VoNR,
+    /// VoWiFi. A phone registers one at a time, so this names one — the header
+    /// used to list every service the network offered, which read as if both
+    /// VoLTE and VoWiFi were in use.
+    /// </summary>
+    public static string Voice(SimReading sim)
+    {
+        var active = sim.Ims?.Active?.ToLowerInvariant();
+        return active switch
+        {
+            "volte" => "VoLTE",
+            "vonr" => "VoNR",
+            "vowifi" => "VoWiFi",
+            "cs" => "CS",
+            // No IMS answer: a call in progress is on a legacy path.
+            _ => sim.InCall ? "CS" : string.Empty,
+        };
+    }
+
     public static string Plmn(CellReading cell) =>
         cell.Mcc is null || cell.Mnc is null ? "\u2014" : $"{cell.Mcc}-{cell.Mnc}";
 
