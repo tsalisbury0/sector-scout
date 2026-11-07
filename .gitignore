@@ -68,3 +68,6 @@ windows/flutter/ephemeral/
 # .NET build output (native app kept as a fallback)
 native/**/bin/
 native/**/obj/
+
+# Kotlin daemon session files, written by any local Gradle build
+android/.kotlin/
