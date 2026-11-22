@@ -27,6 +27,7 @@ import ctypes
 import ctypes.wintypes
 import importlib.util
 import json
+import math
 import os
 import socket
 import sys
@@ -280,6 +281,57 @@ def voice_path(sim: dict) -> str:
             code = active.strip().lower()
             return VOICE_LABELS.get(code, code.upper())
     return "CS" if in_call(sim) else ""
+
+
+def tech_icon(parent: tk.Misc, kind: str, ink: str, bg: str,
+              size: int = 14) -> tk.Canvas:
+    """A drawn glyph for a header badge — the radio tower or the receiver.
+
+    Vector shapes rather than image files, so the icon stays crisp at any DPI
+    and the packaged app carries no extra assets. `kind` is "radio" for the
+    technology chip and "voice" for the path carrying a call; `ink` and `bg`
+    let it take the colour of whatever it sits in.
+    """
+    canvas = tk.Canvas(parent, width=size, height=size, bg=bg,
+                       highlightthickness=0, bd=0)
+    mid = size / 2
+    if kind == "voice":
+        # A receiver, tilted like a handset at rest, with a cup at each end.
+        radius = size * 0.271
+        tilt = math.radians(-38)
+        points: list[float] = []
+        for step in range(14):
+            angle = math.radians(25 + step * 10)
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            points.append(mid + x * math.cos(tilt) - y * math.sin(tilt))
+            points.append(mid + x * math.sin(tilt) + y * math.cos(tilt))
+        canvas.create_line(*points, fill=ink, width=2.2,
+                           capstyle="round", joinstyle="round")
+        dot = size * 0.107
+        last = len(points) - 2
+        for x, y in ((points[0], points[1]), (points[last], points[last + 1])):
+            canvas.create_oval(x - dot, y - dot, x + dot, y + dot,
+                               fill=ink, outline=ink)
+    else:
+        # A lattice tower under two signal arcs. 4G and 5G both radiate, so the
+        # ink says which one it is.
+        apex = size * 0.40
+        foot = size * 0.943
+        half = size * 0.214
+        for radius in (size * 0.136, size * 0.243):
+            canvas.create_arc(
+                mid - radius, apex - radius, mid + radius, apex + radius,
+                start=25, extent=130, style="arc", width=1.2, outline=ink,
+            )
+        canvas.create_line(mid, apex, mid - half, foot, fill=ink, width=1.2)
+        canvas.create_line(mid, apex, mid + half, foot, fill=ink, width=1.2)
+        canvas.create_line(mid - half, foot, mid + half, foot,
+                           fill=ink, width=1.2)
+        brace = size * 0.119
+        canvas.create_line(mid - brace, size * 0.70, mid + brace, size * 0.70,
+                           fill=ink, width=1.2)
+    return canvas
 
 
 ATT_BADGE_PLMNS = frozenset({"310410", "310150", "310170", "310380", "313100"})
@@ -3817,23 +3869,30 @@ class DesktopApp(tk.Tk):
         # -- header: name, technology, slot, mode chip ---------------------
         head = tk.Frame(body, bg=SURFACE)
         head.pack(fill="x")
-        chip = tk.Label(
-            head, text=mode, bg=SURFACE_ALT,
-            fg=ACCENT if nr is not None else MUTED,
-            font=("Segoe UI", 8, "bold"), padx=9, pady=3,
-            highlightthickness=1, highlightbackground=BORDER,
+        tone = ACCENT if nr is not None else MUTED
+        chip = tk.Frame(
+            head, bg=SURFACE_ALT, highlightthickness=1,
+            highlightbackground=BORDER, padx=8, pady=3,
         )
         chip.pack(side="right", anchor="ne")
+        tech_icon(chip, "radio", tone, SURFACE_ALT).pack(side="left")
+        tk.Label(
+            chip, text=mode, bg=SURFACE_ALT, fg=tone,
+            font=("Segoe UI", 8, "bold"),
+        ).pack(side="left", padx=(4, 0))
 
         voice = voice_path(sim)
         if voice:
             # Beside the mode chip and lit only while a call is up, so it reads
             # as the path in use rather than as another static caption.
+            voice_tone = ACCENT if in_call(sim) else MUTED
+            voice_row = tk.Frame(head, bg=SURFACE)
+            voice_row.pack(side="right", anchor="ne", padx=(0, 8))
+            tech_icon(voice_row, "voice", voice_tone, SURFACE).pack(side="left")
             tk.Label(
-                head, text=voice, bg=SURFACE,
-                fg=ACCENT if in_call(sim) else MUTED,
-                font=("Segoe UI", 10, "bold"), padx=6,
-            ).pack(side="right", anchor="ne")
+                voice_row, text=voice, bg=SURFACE, fg=voice_tone,
+                font=("Segoe UI", 10, "bold"), padx=4,
+            ).pack(side="left")
 
         names = tk.Frame(head, bg=SURFACE)
         names.pack(side="left", anchor="w", fill="x", expand=True)
@@ -4117,7 +4176,7 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "2.0.0-beta"
+APP_VERSION = "2.1.0-beta1"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )

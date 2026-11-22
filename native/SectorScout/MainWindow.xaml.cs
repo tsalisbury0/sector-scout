@@ -225,42 +225,66 @@ public partial class MainWindow : Window
         var stack = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
 
         var header = new DockPanel();
-        var badge = new Border
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // The voice path sits to the left of the technology badge, lit only
+        // while a call is up, so it reads as what is in use rather than as
+        // another static caption. Its receiver glyph carries the same ink.
+        var voice = Labels.Voice(sim);
+        if (voice.Length > 0)
+        {
+            var tone = sim.InCall ? AccentBrush : MutedBrush;
+            var path = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 12, 0),
+            };
+            path.Children.Add(Icons.Voice(tone));
+            path.Children.Add(new TextBlock
+            {
+                Text = voice,
+                Foreground = tone,
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0),
+            });
+            actions.Children.Add(path);
+        }
+
+        // A tower for the radio, in accent while NR is attached and muted on
+        // LTE — the same distinction the badge's text makes.
+        var technology = Labels.Technology(sim);
+        var badgeRow = new StackPanel { Orientation = Orientation.Horizontal };
+        badgeRow.Children.Add(Icons.Radio(
+            technology.StartsWith("5G", StringComparison.Ordinal) ? AccentBrush : MutedBrush));
+        badgeRow.Children.Add(new TextBlock
+        {
+            Text = technology,
+            Foreground = AccentBrush,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
+        });
+        actions.Children.Add(new Border
         {
             Background = RowBrush,
             BorderBrush = LineBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(7, 2, 7, 2),
-            Child = new TextBlock
-            {
-                Text = Labels.Technology(sim),
-                Foreground = AccentBrush,
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold,
-            },
-        };
-        DockPanel.SetDock(badge, Dock.Right);
-        header.Children.Add(badge);
+            Padding = new Thickness(6, 2, 7, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = badgeRow,
+        });
 
-        // The voice path sits to the left of the technology badge, and is lit
-        // only while a call is up, so it reads as what is in use rather than as
-        // another static caption.
-        var voice = Labels.Voice(sim);
-        if (voice.Length > 0)
-        {
-            var path = new TextBlock
-            {
-                Text = voice,
-                Foreground = sim.InCall ? AccentBrush : MutedBrush,
-                FontSize = 12,
-                FontWeight = FontWeights.Bold,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 12, 0),
-            };
-            DockPanel.SetDock(path, Dock.Right);
-            header.Children.Add(path);
-        }
+        DockPanel.SetDock(actions, Dock.Right);
+        header.Children.Add(actions);
 
         var carrier = new TextBlock
         {

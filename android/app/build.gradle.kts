@@ -1,7 +1,31 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Where the permanent signing key lives.
+//
+// CI decodes the KEYSTORE_BASE64 secret and exports KEYSTORE_PATH, along with
+// KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. A local machine can export
+// those same variables, or drop the keystore and an `android/key.properties`
+// (storeFile, storePassword, keyAlias, keyPassword) beside this build — both
+// are git-ignored. Either way the build is signed with the one key the released
+// APKs use, so a build made here installs over the released app and the
+// released app installs back over it.
+val signingProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingSecret(environment: String, property: String): String? =
+    System.getenv(environment) ?: signingProperties.getProperty(property)
+
+val permanentKey = signingSecret("KEYSTORE_PATH", "storeFile")?.let { path ->
+    val file = File(path)
+    (if (file.isAbsolute) file else rootProject.file(path)).takeIf { it.exists() }
 }
 
 android {
@@ -40,22 +64,33 @@ android {
         aidl = true
     }
 
+    signingConfigs {
+        if (permanentKey != null) {
+            create("permanent") {
+                storeFile = permanentKey
+                storePassword = signingSecret("KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingSecret("KEY_ALIAS", "keyAlias")
+                keyPassword = signingSecret("KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        // Debug builds carry the permanent key as well. That is the whole point:
+        // the phone has the released app on it, so a test build has to go over
+        // that app rather than demand it be uninstalled first — which would take
+        // the Shizuku grant, the saved settings and the update history with it.
+        // Without the key both build types keep debug signing, as before.
+        getByName("debug") {
+            if (permanentKey != null) {
+                signingConfig = signingConfigs.getByName("permanent")
+            }
+        }
         release {
-            // CI decodes the KEYSTORE_BASE64 secret and points KEYSTORE_PATH at
-            // it, so every release APK is signed with the one permanent key and
-            // can install over the previous version. A machine without the
-            // keystore (a local `flutter run --release`) keeps debug signing.
-            val ksPath = System.getenv("KEYSTORE_PATH")
-            if (ksPath != null && File(ksPath).exists()) {
-                signingConfig = signingConfigs.create("release").apply {
-                    storeFile = File(ksPath)
-                    storePassword = System.getenv("KEYSTORE_PASSWORD")
-                    keyAlias = System.getenv("KEY_ALIAS")
-                    keyPassword = System.getenv("KEY_PASSWORD")
-                }
+            signingConfig = if (permanentKey != null) {
+                signingConfigs.getByName("permanent")
             } else {
-                signingConfig = signingConfigs.getByName("debug")
+                signingConfigs.getByName("debug")
             }
             // R8 has to keep the Shizuku user service intact: it is started by
             // reflection from another process, by class name and no-arg

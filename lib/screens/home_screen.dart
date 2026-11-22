@@ -17,6 +17,7 @@ import '../services/serving_view.dart';
 import '../services/signal_notification.dart';
 import 'settings_screen.dart';
 import '../theme/app_colors.dart';
+import '../widgets/band_spectrum.dart';
 import '../widgets/note_help.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/scanner_ui.dart';
@@ -1089,6 +1090,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               color: AppColors.textMuted,
             ),
           ),
+          const SizedBox(height: 18),
+          ScannerSection(
+            '${prefix}Band spectrum',
+            note:
+                'The mask is LTE\u2019s transmit spectrum \u2014 90\u202f% of '
+                'the channel occupied, falling to \u221245 dBc at its edges '
+                '\u2014 drawn on the band tables\u2019 own blocks. A frequency '
+                'is never only one band: 2115 MHz sits inside band 4, band 10 '
+                'and band 66, so every band covering the carrier is listed, '
+                'with the one the radio reported marked in green.',
+          ),
+          const SizedBox(height: 10),
+          BandSpectrum(sim: sim),
           const SizedBox(height: 12),
           _CarrierCard(
             rows: ServingView.carrierRows(sim),
