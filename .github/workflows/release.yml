@@ -23,7 +23,11 @@ jobs:
           java-version: "17"
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Pinned, not `channel: stable`: Flutter 3.48 deprecates
+          # `package:flutter/material.dart` in favour of `material_ui`, which
+          # `flutter analyze` treats as a failure in every file that imports it.
+          # Move to the new package and this pin can go.
+          flutter-version: "3.47.8"
           cache: true
       - name: Fetch packages
         run: flutter pub get
@@ -103,7 +107,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Pinned, not `channel: stable`: Flutter 3.48 deprecates
+          # `package:flutter/material.dart` in favour of `material_ui`, which
+          # `flutter analyze` treats as a failure in every file that imports it.
+          # Move to the new package and this pin can go.
+          flutter-version: "3.47.8"
           cache: true
       - name: Enable Developer Mode
         shell: pwsh

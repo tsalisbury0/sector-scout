@@ -4,6 +4,11 @@ name: Android APK
 # workflow is the one that publishes; this exists so a build that fixes
 # something on the phone can be installed and tested without cutting a release.
 on:
+  # Built on every main push as well as on demand, so a build made here is one
+  # download from a phone. Tags still go through the release workflow, which is
+  # the one that publishes.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
