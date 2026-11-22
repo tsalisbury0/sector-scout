@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/band_tables.dart';
@@ -41,8 +43,25 @@ BandBlock? bandBlock(int band, {required bool is5g}) {
   );
 }
 
-/// Every band of the same technology whose downlink block covers [low]–[high],
-/// the band the radio reported first.
+/// The block a band occupies on the uplink, or null when it has none.
+///
+/// A supplemental downlink pairs nothing here, and the bands whose uplink is
+/// narrower than their downlink (66, 70, n66) are clamped to their uplink's own
+/// top edge instead of being drawn past it. A TDD band shares one block, so its
+/// uplink block is its downlink block.
+BandBlock? bandUplinkBlock(int band, {required bool is5g}) {
+  if (band <= 0) return null;
+  final plan = is5g ? nrBandPlans[band] : lteBandPlans[band];
+  if (plan == null || plan.ulLow == null) return null;
+  final step = is5g ? 0.005 : 0.1;
+  var high = plan.ulLow! + (plan.last - plan.first + 1) * step;
+  final top = plan.ulHigh;
+  if (top != null && high > top) high = top;
+  return BandBlock(band: band, low: plan.ulLow!, high: high, is5g: is5g);
+}
+
+/// Every band of the same technology whose block covers [low]–[high], the band
+/// the radio reported first.
 ///
 /// A frequency is never only one band. 2115 MHz sits inside band 4's
 /// 2110–2155 block, band 10's 2110–2170 and band 66's 2110–2200, so a graph
@@ -54,11 +73,14 @@ List<BandBlock> bandsCovering(
   double high, {
   required bool is5g,
   int? reported,
+  bool uplink = false,
 }) {
   final plans = is5g ? nrBandPlans : lteBandPlans;
   final blocks = <BandBlock>[];
   for (final band in plans.keys) {
-    final block = bandBlock(band, is5g: is5g);
+    final block = uplink
+        ? bandUplinkBlock(band, is5g: is5g)
+        : bandBlock(band, is5g: is5g);
     if (block == null) continue;
     if (block.high <= low || block.low >= high) continue;
     blocks.add(block);
@@ -73,23 +95,58 @@ List<BandBlock> bandsCovering(
   return blocks;
 }
 
-/// One carrier placed on the dial: where it sits, how wide, and the band block
-/// that puts it there.
+/// One carrier placed on the dial: where it sits, how wide, the band block that
+/// puts it there, and the role the radio is giving it.
 class SpectrumCarrier {
-  const SpectrumCarrier({
+  SpectrumCarrier({
     required this.carrier,
     required this.centerMhz,
     required this.block,
+    this.role = 'CA',
+    this.uplinkMhz,
+    this.uplinkBlock,
   });
 
   final RadioCarrier carrier;
+
+  /// Downlink centre, or the uplink centre on a copy drawn as the uplink.
   final double centerMhz;
+
+  /// The band block for the direction this copy is drawn in.
   final BandBlock block;
+
+  /// `PCC`, `SDL`, `CA`, `CA 2` or `5G` — what the layer is doing in the
+  /// aggregate, which is what the selector buttons are labelled with.
+  String role;
+
+  /// Uplink centre from the matched cell, or null when the band pairs none.
+  final double? uplinkMhz;
+
+  /// The uplink block of the same band, when the band has one.
+  final BandBlock? uplinkBlock;
 
   double get bandwidthMhz => carrier.bandwidthMhz;
   double get lowMhz => centerMhz - bandwidthMhz / 2;
   double get highMhz => centerMhz + bandwidthMhz / 2;
   bool get is5g => block.is5g;
+
+  /// A TDD layer has one block for both directions, so its downlink and uplink
+  /// graphs would be the same chart twice. It gets one, labelled as both.
+  bool get isTdd {
+    final uplink = uplinkMhz;
+    return uplink != null && (uplink - centerMhz).abs() < 0.005;
+  }
+
+  /// The same carrier re-centred on its uplink, for the uplink graph.
+  SpectrumCarrier asUplink() => SpectrumCarrier(
+    carrier: carrier,
+    centerMhz: uplinkMhz!,
+    block: uplinkBlock!,
+    role: role,
+  );
+
+  /// `PCC B2` — the one line a selector button carries.
+  String get buttonLabel => '$role ${block.label}';
 }
 
 /// A carrier placed on the dial, or null when nothing can say where it sits.
@@ -110,7 +167,67 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
       : (cellBandsList.isEmpty ? 0 : cellBandsList.first);
   final block = bandBlock(band, is5g: is5g);
   if (block == null) return null;
-  return SpectrumCarrier(carrier: carrier, centerMhz: center, block: block);
+  return SpectrumCarrier(
+    carrier: carrier,
+    centerMhz: center,
+    block: block,
+    role: _roleFor(sim, carrier, cell),
+    uplinkMhz: cell?.uplinkMhz,
+    uplinkBlock: bandUplinkBlock(band, is5g: is5g),
+  );
+}
+
+/// What a layer is doing: the anchor, a supplemental downlink, or one of the
+/// aggregated carriers. An NR layer names itself.
+String _roleFor(SimReading sim, RadioCarrier carrier, CellTower? cell) {
+  if (carrier.tech == CellTech.nr) return '5G';
+  if (lteBandPlans[carrier.band]?.isDlOnly ?? false) return 'SDL';
+  final serving = sim.lteServing;
+  if (cell != null && serving != null && _sameCell(cell, serving)) {
+    return 'PCC';
+  }
+  return 'CA';
+}
+
+/// The same cell, compared by identity first and by what it broadcasts second:
+/// the scan and the carrier match can hand back different copies of one cell.
+bool _sameCell(CellTower a, CellTower b) {
+  if (identical(a, b)) return true;
+  if (a.pci == null || a.pci != b.pci) return false;
+  if (a.tech != b.tech) return false;
+  final adl = a.downlinkMhz;
+  final bdl = b.downlinkMhz;
+  if (adl == null || bdl == null) return a.bandLabel == b.bandLabel;
+  return (adl - bdl).abs() < 0.01;
+}
+
+/// Every placed carrier, roles filled in.
+///
+/// The anchor is the carrier matched to the serving cell. When the reader names
+/// no PCI and the match falls back to a band, an anchor can be missed; the first
+/// LTE carrier then takes the role, so the buttons always lead with a PCC.
+/// Aggregated layers are numbered when there is more than one, since two buttons
+/// both reading `CA B66` would say nothing about which is which.
+List<SpectrumCarrier> spectrumCarriers(SimReading sim) {
+  final placed = <SpectrumCarrier>[
+    for (final carrier in sim.carriers) ?placeCarrier(sim, carrier),
+  ];
+  if (!placed.any((carrier) => carrier.role == 'PCC')) {
+    for (final carrier in placed) {
+      if (carrier.carrier.tech == CellTech.lte && carrier.role != 'SDL') {
+        carrier.role = 'PCC';
+        break;
+      }
+    }
+  }
+  final secondaries = placed.where((carrier) => carrier.role == 'CA').length;
+  if (secondaries > 1) {
+    var number = 1;
+    for (final carrier in placed) {
+      if (carrier.role == 'CA') carrier.role = 'CA ${number++}';
+    }
+  }
+  return placed;
 }
 
 /// Carriers that can share one chart.
@@ -147,42 +264,203 @@ bool _together(SpectrumCarrier a, SpectrumCarrier b) {
   return a.lowMhz <= b.highMhz && b.lowMhz <= a.highMhz;
 }
 
-/// The spectrum each carrier is sitting in, with the LTE transmit mask across
-/// its channel and every band block that channel falls inside.
+/// The spectrum page: one button per component carrier, the chart for the layer
+/// selected, and its uplink directly below.
 ///
 /// Only the privileged reader names a carrier's band and width, so this is the
 /// one place the app can draw a carrier where it really is: a 10 MHz band 66
 /// channel at 2115 MHz is a tenth of band 66's block, a fifth of band 4's, and
-/// the same channel is also inside band 10.
-class BandSpectrum extends StatelessWidget {
+/// the same channel is also inside band 10. The uplink chart puts the same
+/// carrier on its transmit frequency, scaled to the transmit power when the
+/// radio reports one.
+class BandSpectrum extends StatefulWidget {
   const BandSpectrum({super.key, required this.sim});
 
   final SimReading sim;
 
   @override
+  State<BandSpectrum> createState() => _BandSpectrumState();
+}
+
+class _BandSpectrumState extends State<BandSpectrum> {
+  int _selected = 0;
+
+  @override
+  void didUpdateWidget(covariant BandSpectrum oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final count = spectrumCarriers(widget.sim).length;
+    if (_selected >= count) _selected = count == 0 ? 0 : count - 1;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final carriers = <SpectrumCarrier>[
-      for (final carrier in sim.carriers)
-        ?placeCarrier(sim, carrier),
-    ];
+    final carriers = spectrumCarriers(widget.sim);
     if (carriers.isEmpty) return const SizedBox.shrink();
 
+    final selected = carriers[_selected.clamp(0, carriers.length - 1)];
     final clusters = clusterCarriers(carriers);
+    final cluster = clusters.firstWhere(
+      (members) => members.contains(selected),
+      orElse: () => <SpectrumCarrier>[selected],
+    );
+    final uplink = <SpectrumCarrier>[
+      for (final carrier in cluster)
+        if (carrier.uplinkMhz != null && carrier.uplinkBlock != null)
+          carrier.asUplink(),
+    ];
+    // TDD shares its block, so the downlink chart already is the uplink one.
+    final tdd = selected.isTdd;
+    final txPower = selected.carrier.txPowerDbm;
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < clusters.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          _SpectrumPanel(carriers: clusters[i]),
+        _CarrierSelector(
+          carriers: carriers,
+          selected: carriers.indexOf(selected),
+          onSelected: (index) => setState(() => _selected = index),
+        ),
+        const SizedBox(height: 10),
+        _SpectrumPanel(
+          carriers: cluster,
+          title: tdd ? 'TDD · downlink and uplink' : 'Downlink',
+        ),
+        if (!tdd) ...[
+          const SizedBox(height: 10),
+          if (uplink.isEmpty)
+            _NoUplinkNote(carrier: selected)
+          else
+            _SpectrumPanel(
+              carriers: uplink,
+              uplink: true,
+              txPowerDbm: txPower,
+              title: txPower == null
+                  ? 'Uplink · TX power not reported'
+                  : 'Uplink · TX $txPower dBm',
+            ),
         ],
       ],
     );
   }
 }
 
-class _SpectrumPanel extends StatelessWidget {
-  const _SpectrumPanel({required this.carriers});
+/// One button per layer, so a four-carrier aggregate is read one chart at a
+/// time instead of as a wall of lines.
+class _CarrierSelector extends StatelessWidget {
+  const _CarrierSelector({
+    required this.carriers,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final List<SpectrumCarrier> carriers;
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (var i = 0; i < carriers.length; i++)
+          _CarrierButton(
+            label: carriers[i].buttonLabel,
+            active: i == selected,
+            onTap: () => onSelected(i),
+          ),
+      ],
+    );
+  }
+}
+
+class _CarrierButton extends StatelessWidget {
+  const _CarrierButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active
+          ? AppColors.accent.withValues(alpha: 0.18)
+          : AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(4),
+        side: BorderSide(color: active ? AppColors.accent : AppColors.border),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              letterSpacing: 0.6,
+              fontWeight: FontWeight.w600,
+              color: active ? AppColors.accent : AppColors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The ink an uplink mask is drawn in.
+///
+/// An aggregated layer is red on the uplink for now: whether a modem reports
+/// uplink carrier aggregation at all is uneven, and a secondary carrier's
+/// transmit mask is provisional until that is understood. The anchor keeps the
+/// green every other chart uses.
+Color uplinkMaskColor(SpectrumCarrier carrier) => carrier.role.startsWith('CA')
+    ? AppColors.danger
+    : AppColors.accent;
+
+/// A band with no uplink to draw, said plainly rather than as an empty box.
+class _NoUplinkNote extends StatelessWidget {
+  const _NoUplinkNote({required this.carrier});
+
+  final SpectrumCarrier carrier;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppColors.radius),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Text(
+        '${carrier.block.label} is a supplemental downlink: the band pairs no '
+        'uplink, so there is no transmit spectrum to draw for this layer.',
+        style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
+class _SpectrumPanel extends StatelessWidget {
+  const _SpectrumPanel({
+    required this.carriers,
+    this.uplink = false,
+    this.txPowerDbm,
+    this.title,
+  });
+
+  final List<SpectrumCarrier> carriers;
+  final bool uplink;
+  final int? txPowerDbm;
+  final String? title;
 
   /// Six rows is what fits before the rails outgrow the plot they explain.
   static const int _maxBands = 6;
@@ -196,6 +474,7 @@ class _SpectrumPanel extends StatelessWidget {
         carrier.highMhz,
         is5g: carrier.is5g,
         reported: carrier.block.band,
+        uplink: uplink,
       )) {
         final known = bands.any(
           (seen) => seen.band == band.band && seen.is5g == band.is5g,
@@ -225,6 +504,7 @@ class _SpectrumPanel extends StatelessWidget {
     const bandRow = 14.0;
     const axisHeight = 20.0;
     final height = plotHeight + 8 + bands.length * bandRow + axisHeight;
+    final caption = title;
 
     return Container(
       decoration: BoxDecoration(
@@ -233,20 +513,40 @@ class _SpectrumPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppColors.radius),
       ),
       padding: const EdgeInsets.fromLTRB(8, 10, 10, 6),
-      child: SizedBox(
-        height: height,
-        width: double.infinity,
-        child: CustomPaint(
-          painter: _SpectrumPainter(
-            carriers: carriers,
-            bands: bands,
-            low: low - margin,
-            high: high + margin,
-            plotHeight: plotHeight,
-            bandRow: bandRow,
-            axisHeight: axisHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (caption != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 26, bottom: 6),
+              child: Text(
+                caption.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 8.5,
+                  letterSpacing: 1,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ),
+          SizedBox(
+            height: height,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _SpectrumPainter(
+                carriers: carriers,
+                bands: bands,
+                low: low - margin,
+                high: high + margin,
+                plotHeight: plotHeight,
+                bandRow: bandRow,
+                axisHeight: axisHeight,
+                uplink: uplink,
+                txPowerDbm: txPowerDbm,
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -261,6 +561,8 @@ class _SpectrumPainter extends CustomPainter {
     required this.plotHeight,
     required this.bandRow,
     required this.axisHeight,
+    required this.uplink,
+    this.txPowerDbm,
   });
 
   final List<SpectrumCarrier> carriers;
@@ -271,15 +573,32 @@ class _SpectrumPainter extends CustomPainter {
   final double bandRow;
   final double axisHeight;
 
+  /// The uplink graph is drawn in dBm around the transmit power; the downlink
+  /// one is drawn in dBc against the emission limit.
+  final bool uplink;
+  final int? txPowerDbm;
+
   static const double _gutter = 26;
   static const double _top = 8;
-  static const double _floorDb = -60;
-  static const double _ceilingDb = 5;
 
-  /// The out-of-band floor an LTE carrier has to stay under.
+  /// The out-of-band floor an LTE carrier has to stay under, in dBc.
   static const double _limitDb = -45;
 
+  /// Power class 3 — the ceiling an LTE handset transmits at. The uplink mask is
+  /// drawn here when the radio reports no transmit power, which is every public
+  /// API Android offers: `PhysicalChannelConfig` carries a width and a band but
+  /// no power, so this is the reference the graph falls back to.
+  static const double _powerClass3Dbm = 23;
+
   static const Color _grid = Color(0x14FFFFFF);
+
+  double get _ceilingDb => uplink ? 30 : 5;
+  double get _floorDb => uplink ? 0 : -60;
+  double get _limit => uplink ? 0 : _limitDb;
+  double get _peakDb =>
+      uplink ? (txPowerDbm?.clamp(0, 30).toDouble() ?? _powerClass3Dbm) : 0;
+  List<double> get _ticks =>
+      uplink ? const <double>[30, 20, 10, 0] : const <double>[0, -20, -40, -60];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -293,7 +612,7 @@ class _SpectrumPainter extends CustomPainter {
     final grid = Paint()
       ..color = _grid
       ..strokeWidth = 1;
-    for (final db in const <double>[0, -20, -40, -60]) {
+    for (final db in _ticks) {
       canvas.drawLine(Offset(left, y(db)), Offset(right, y(db)), grid);
       _text(
         canvas,
@@ -304,15 +623,18 @@ class _SpectrumPainter extends CustomPainter {
       );
     }
 
-    // The emission limit, which is what the mask is shaped against.
-    _dash(canvas, Offset(left, y(_limitDb)), Offset(right, y(_limitDb)));
-    _text(
-      canvas,
-      '\u221245 dBc',
-      Offset(right - 34, y(_limitDb) - 9),
-      size: 8,
-      color: AppColors.textMuted,
-    );
+    // The emission limit, which is what the mask is shaped against. The uplink
+    // has no limit line to draw: its shape is the transmit power itself.
+    if (!uplink) {
+      _dash(canvas, Offset(left, y(_limit)), Offset(right, y(_limit)));
+      _text(
+        canvas,
+        '\u221245 dBc',
+        Offset(right - 34, y(_limit) - 9),
+        size: 8,
+        color: AppColors.textMuted,
+      );
+    }
 
     for (final carrier in carriers) {
       _carrier(canvas, carrier, x, y, bottom);
@@ -392,6 +714,12 @@ class _SpectrumPainter extends CustomPainter {
 
   /// One carrier: the mask across its channel, its edges, and where other
   /// carriers in the same chart sit relative to it.
+  ///
+  /// The mask is a squared one, not a triangle: it holds its full power across
+  /// almost the whole channel and falls away within a fraction of a megahertz
+  /// at each edge, which is what an LTE transmit mask looks like. The previous
+  /// shape sloped over the channel's outer tenth and read as a pyramid at this
+  /// scale.
   void _carrier(
     Canvas canvas,
     SpectrumCarrier carrier,
@@ -399,26 +727,28 @@ class _SpectrumPainter extends CustomPainter {
     double Function(double) y,
     double bottom,
   ) {
-    final occupied = carrier.bandwidthMhz * 0.45;
-    final shoulder = carrier.bandwidthMhz / 2 + 2;
+    final half = carrier.bandwidthMhz / 2;
+    final inset = math.max(0.15, carrier.bandwidthMhz * 0.02);
+    final foot = math.max(0.3, carrier.bandwidthMhz * 0.03);
     final mask = Path()
       ..addPolygon([
-        Offset(x(carrier.centerMhz - shoulder), y(_limitDb)),
-        Offset(x(carrier.centerMhz - occupied), y(0)),
-        Offset(x(carrier.centerMhz + occupied), y(0)),
-        Offset(x(carrier.centerMhz + shoulder), y(_limitDb)),
+        Offset(x(carrier.centerMhz - half - foot), y(_limit)),
+        Offset(x(carrier.centerMhz - half + inset), y(_peakDb)),
+        Offset(x(carrier.centerMhz + half - inset), y(_peakDb)),
+        Offset(x(carrier.centerMhz + half + foot), y(_limit)),
       ], true);
 
+    final ink = uplink ? uplinkMaskColor(carrier) : AppColors.accent;
     canvas.drawPath(
       mask,
       Paint()
-        ..color = AppColors.accent.withValues(alpha: 0.20)
+        ..color = ink.withValues(alpha: 0.20)
         ..style = PaintingStyle.fill,
     );
     canvas.drawPath(
       mask,
       Paint()
-        ..color = AppColors.accent
+        ..color = ink
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2,
     );
@@ -426,24 +756,25 @@ class _SpectrumPainter extends CustomPainter {
     // The channel edges, which are the carrier's width on the dial.
     _dash(
       canvas,
-      Offset(x(carrier.lowMhz), y(_limitDb)),
+      Offset(x(carrier.lowMhz), y(_limit)),
       Offset(x(carrier.lowMhz), bottom),
     );
     _dash(
       canvas,
-      Offset(x(carrier.highMhz), y(_limitDb)),
+      Offset(x(carrier.highMhz), y(_limit)),
       Offset(x(carrier.highMhz), bottom),
     );
 
+    final arrow = uplink ? '\u2191' : '\u2193';
     final label =
-        '${carrier.block.label} \u00b7 ${_mhz(carrier.centerMhz)} MHz '
+        '$arrow ${carrier.block.label} \u00b7 ${_mhz(carrier.centerMhz)} MHz '
         '\u00b7 ${_mhz(carrier.bandwidthMhz)} MHz';
     _text(
       canvas,
       label,
       Offset(x(carrier.centerMhz) - _measure(label, 8.5) / 2, bottom - 11),
       size: 8.5,
-      color: AppColors.accent,
+      color: ink,
       bold: true,
     );
   }
@@ -466,7 +797,10 @@ class _SpectrumPainter extends CustomPainter {
 
   double _measure(String value, double size) {
     final painter = TextPainter(
-      text: TextSpan(text: value, style: TextStyle(fontSize: size, height: 1)),
+      text: TextSpan(
+        text: value,
+        style: TextStyle(fontSize: size, height: 1),
+      ),
       textDirection: TextDirection.ltr,
     )..layout();
     return painter.width;
@@ -521,5 +855,7 @@ class _SpectrumPainter extends CustomPainter {
       old.high != high ||
       old.plotHeight != plotHeight ||
       old.carriers != carriers ||
-      old.bands != bands;
+      old.bands != bands ||
+      old.uplink != uplink ||
+      old.txPowerDbm != txPowerDbm;
 }

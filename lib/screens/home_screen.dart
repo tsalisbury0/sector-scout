@@ -59,8 +59,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final PageController _pageController = PageController();
   int _pageIndex = 0;
 
-  /// Which block of the reading the strip has open: Cell, Radio,
-  /// Carriers or Neighbours.
+  /// Which block of the reading the strip has open: Cell, Radio, Carriers,
+  /// Spectrum or Neighbours.
   int _tab = 0;
 
   /// What the privileged reader is doing, so the Carriers tab can offer the one
@@ -975,10 +975,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Carriers stays even with nothing to draw: that panel is where a reader
     // without Shizuku learns how to get it, so hiding the tab hid the only
     // route to the feature as well.
+    // The spectrum page needs a frequency and a width for at least one layer:
+    // without them there is no mask to place on the dial, so the tab stays
+    // hidden rather than opening on an empty chart.
+    final canSpectrum = sim.carriers.any(
+      (carrier) => placeCarrier(sim, carrier) != null,
+    );
     final tabs = <String>[
       'Cell',
       'Radio',
       'Carriers',
+      if (canSpectrum) 'Spectrum',
       if (hasNeighbours) 'Neighbours',
     ];
     final index = _tab.clamp(0, tabs.length - 1);
@@ -1090,24 +1097,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               color: AppColors.textMuted,
             ),
           ),
-          const SizedBox(height: 18),
-          ScannerSection(
-            '${prefix}Band spectrum',
-            note:
-                'The mask is LTE\u2019s transmit spectrum \u2014 90\u202f% of '
-                'the channel occupied, falling to \u221245 dBc at its edges '
-                '\u2014 drawn on the band tables\u2019 own blocks. A frequency '
-                'is never only one band: 2115 MHz sits inside band 4, band 10 '
-                'and band 66, so every band covering the carrier is listed, '
-                'with the one the radio reported marked in green.',
-          ),
-          const SizedBox(height: 10),
-          BandSpectrum(sim: sim),
           const SizedBox(height: 12),
           _CarrierCard(
             rows: ServingView.carrierRows(sim),
             totals: ServingView.carrierTotals(sim),
           ),
+        ];
+      case 'Spectrum':
+        return [
+          const SizedBox(height: 6),
+          ScannerSection(
+            '${prefix}PCC \u00b7 SDL \u00b7 CA spectrum',
+            note:
+                'One button per component carrier: the anchor, any '
+                'supplemental downlink, and every aggregated layer. The mask '
+                'is LTE\u2019s transmit spectrum, squared off across the '
+                'channel and falling to \u221245 dBc at its edges, drawn on the '
+                'band tables\u2019 own blocks \u2014 so 2115 MHz is listed '
+                'under band 4, band 10 and band 66 at once, with the reported '
+                'band marked in green. The uplink graph below puts the same '
+                'carrier on its transmit frequency; when the radio reports a '
+                'transmit power it is drawn at that level, otherwise at the '
+                '23 dBm of LTE power class 3.',
+          ),
+          const SizedBox(height: 10),
+          BandSpectrum(sim: sim),
         ];
       case 'Neighbours':
         return [

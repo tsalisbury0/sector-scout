@@ -680,6 +680,7 @@ class RadioCarrier {
     required this.bandwidthKhz,
     this.pci,
     this.networkType,
+    this.txPowerDbm,
   });
 
   factory RadioCarrier.fromMap(Map<Object?, Object?> map) {
@@ -690,6 +691,7 @@ class RadioCarrier {
       bandwidthKhz: _int(map['bw']) ?? 0,
       pci: _int(map['pci']),
       networkType: net,
+      txPowerDbm: _int(map['txPower']),
     );
   }
 
@@ -716,6 +718,16 @@ class RadioCarrier {
 
   /// Physical cell ID of this carrier, when the framework knows it.
   final int? pci;
+
+  /// Transmit power of this layer in dBm, when the reader could read it.
+  ///
+  /// Android's public API does not expose transmit power at all: a
+  /// `PhysicalChannelConfig` carries a band and a width, never a level. The
+  /// field is part of the wire format so a reader that does know — a vendor
+  /// service, or a later platform that adds it — can report one, and the
+  /// uplink graph is then drawn at the power actually being transmitted.
+  /// Null means nobody said, which is the normal case.
+  final int? txPowerDbm;
 
   double get bandwidthMhz => bandwidthKhz / 1000;
 

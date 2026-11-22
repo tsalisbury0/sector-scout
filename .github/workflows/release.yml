@@ -52,8 +52,11 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk              "sector-scout-${version}.apk"
+          # One universal APK, not per-ABI splits: armeabi-v7a, arm64-v8a and
+          # x86_64 in a single file, so any phone can install the release asset.
+          flutter build apk --release \
+            --target-platform android-arm,android-arm64,android-x64
+          cp build/app/outputs/flutter-apk/app-release.apk              "sector-scout-${version}-universal.apk"
       - uses: actions/upload-artifact@v7
         with:
           name: android-apk
@@ -167,16 +170,19 @@ jobs:
           # app's update check unless the beta switch is on.
           prerelease: ${{ contains(github.ref_name, '-beta') }}
           body: |
-            The Windows app, the Python console and the phone app are three
-            separate downloads above.
+            Every release carries all three builds: one universal APK, one
+            Windows installer, and the Python desktop app.
 
-            - **sector-scout-windows-*.zip** — the Windows app. Unzip the folder
-              and run `SectorScout.exe`; nothing to install.
-            - **sector-scout-desktop-*.zip** — the Python console. Needs Python 3
-              on this machine; see the README inside.
-            - **Sector Scout Setup *.exe** — the Windows app as an installer,
-              the same build as the zip beside it.
-            - **sector-scout-*.apk** — the Android phone app.
+            - **sector-scout-*-universal.apk** — the Android phone app as one
+              universal APK, carrying the arm, arm64 and x86_64 builds in a
+              single file so it installs on any phone.
+            - **Sector Scout Setup *.exe** — the universal Windows installer.
+              Installs the Windows app per user, with no administrator prompt.
+            - **sector-scout-windows-*.zip** — the same Windows app as a folder.
+              Unzip it and run `SectorScout.exe`; nothing to install.
+            - **sector-scout-desktop-*.zip** — the universal Python desktop
+              app: one script, the same on Windows, macOS and Linux. Needs
+              Python 3 on the machine; see the README inside.
 
             **Note:** the Windows app's Bluetooth watching is new and can be
             unreliable — it is the piece most likely to misbehave, and a phone

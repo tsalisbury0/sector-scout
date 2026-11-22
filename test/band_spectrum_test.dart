@@ -1,4 +1,5 @@
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
+import 'package:cell_tower_monitor/theme/app_colors.dart';
 import 'package:cell_tower_monitor/widgets/band_spectrum.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,11 +28,7 @@ SimReading _band66({int earfcn = 66486, int bandwidthKhz = 10000}) =>
 
 SpectrumCarrier _carrier(int band, double centerMhz, {int khz = 10000}) =>
     SpectrumCarrier(
-      carrier: RadioCarrier(
-        tech: CellTech.lte,
-        band: band,
-        bandwidthKhz: khz,
-      ),
+      carrier: RadioCarrier(tech: CellTech.lte, band: band, bandwidthKhz: khz),
       centerMhz: centerMhz,
       block: bandBlock(band, is5g: false)!,
     );
@@ -89,6 +86,100 @@ void main() {
       expect(placed.block.band, 66);
     });
 
+    test('the anchor names itself and knows its uplink', () {
+      final sim = _band66();
+      final placed = placeCarrier(sim, sim.carriers.single)!;
+      expect(placed.role, 'PCC');
+      // Band 66 pairs 2110–2200 down with 1710–1780 up on the same channel
+      // offset, so 2115 down is 400 MHz below it, at 1715 up.
+      expect(placed.uplinkMhz, closeTo(1715, 0.01));
+      expect(placed.uplinkBlock!.low, 1710);
+      expect(placed.uplinkBlock!.high, 1780);
+      expect(placed.buttonLabel, 'PCC B66');
+    });
+
+    test('a supplemental downlink is an SDL layer with no uplink', () {
+      final sim = SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 29, 'bw': 10000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 300,
+            'arfcn': 9710,
+            'bands': <Object?>[29],
+            'dbm': -95,
+          },
+        ],
+      });
+      final placed = placeCarrier(sim, sim.carriers.single)!;
+      expect(placed.role, 'SDL');
+      expect(placed.uplinkMhz, isNull);
+      expect(placed.uplinkBlock, isNull);
+    });
+
+    test('aggregated layers are numbered so the buttons differ', () {
+      final sim = SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000, 'pci': 148},
+          <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000, 'pci': 149},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 148,
+            'arfcn': 66486,
+            'bands': <Object?>[66],
+            'dbm': -89,
+          },
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': false,
+            'pci': 149,
+            'arfcn': 66786,
+            'bands': <Object?>[66],
+            'dbm': -101,
+          },
+        ],
+      });
+      final placed = spectrumCarriers(sim);
+      expect(placed.map((carrier) => carrier.role), ['PCC', 'CA']);
+    });
+
+    test('an aggregated layer is red on the uplink, the anchor green', () {
+      final ca = _carrier(66, 2115)..role = 'CA 1';
+      final pcc = _carrier(2, 1960)..role = 'PCC';
+      expect(uplinkMaskColor(ca), AppColors.danger);
+      expect(uplinkMaskColor(pcc), AppColors.accent);
+    });
+
+    test('a TDD layer has one block for both directions', () {
+      final sim = SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 41, 'bw': 20000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 220,
+            'arfcn': 40000,
+            'bands': <Object?>[41],
+            'dbm': -92,
+          },
+        ],
+      });
+      final placed = placeCarrier(sim, sim.carriers.single)!;
+      expect(placed.isTdd, isTrue);
+      expect(placed.uplinkMhz, closeTo(placed.centerMhz, 0.005));
+    });
+
     test('a carrier no cell can place is left off the graph', () {
       final sim = SimReading.fromMap(<Object?, Object?>{
         'slotIndex': 0,
@@ -111,10 +202,7 @@ void main() {
     });
 
     test('a band 2 anchor and an n41 leg get a chart each', () {
-      final clusters = clusterCarriers([
-        _carrier(2, 1960),
-        _carrier(66, 2115),
-      ]);
+      final clusters = clusterCarriers([_carrier(2, 1960), _carrier(66, 2115)]);
       expect(clusters, hasLength(2));
     });
   });
@@ -130,5 +218,67 @@ void main() {
       ),
     );
     expect(find.byType(CustomPaint), findsWidgets);
+    // The selector names the anchor, and the uplink is drawn below it.
+    expect(find.text('PCC B66'), findsOneWidget);
+    expect(find.text('DOWNLINK'), findsOneWidget);
+    expect(find.textContaining('UPLINK'), findsOneWidget);
+  });
+
+  testWidgets('a TDD layer drawn once, labelled as both directions', (
+    tester,
+  ) async {
+    final sim = SimReading.fromMap(<Object?, Object?>{
+      'slotIndex': 0,
+      'carriers': <Object?>[
+        <Object?, Object?>{'net': 13, 'band': 41, 'bw': 20000},
+      ],
+      'cells': <Object?>[
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': true,
+          'pci': 220,
+          'arfcn': 40000,
+          'bands': <Object?>[41],
+          'dbm': -92,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+        ),
+      ),
+    );
+    expect(find.text('TDD · DOWNLINK AND UPLINK'), findsOneWidget);
+    expect(find.textContaining('UPLINK · TX'), findsNothing);
+  });
+
+  testWidgets('a supplemental downlink says it has no uplink', (tester) async {
+    final sim = SimReading.fromMap(<Object?, Object?>{
+      'slotIndex': 0,
+      'carriers': <Object?>[
+        <Object?, Object?>{'net': 13, 'band': 29, 'bw': 10000},
+      ],
+      'cells': <Object?>[
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': true,
+          'pci': 300,
+          'arfcn': 9710,
+          'bands': <Object?>[29],
+          'dbm': -95,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+        ),
+      ),
+    );
+    expect(find.text('SDL B29'), findsOneWidget);
+    expect(find.textContaining('pairs no uplink'), findsOneWidget);
   });
 }

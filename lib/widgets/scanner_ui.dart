@@ -165,10 +165,9 @@ class SimHeaderCard extends StatelessWidget {
               label: legs.length > 1 ? legs[i].$1 : null,
               cell: legs[i].$2,
             ),
-            // Each leg traces the reading printed directly above it, and holds
-            // its own range: an anchor at -107 and a secondary at -117 do not
-            // share one, and a footer range under the lower figure would read
-            // as that figure's.
+            // Each leg traces the reading printed directly above it on the
+            // same -140…-20 dBm scale, so an anchor at -107 and a secondary at
+            // -117 sit where they really are relative to each other.
             if ((traces?[legs[i].$1]?.length ?? 0) > 1) ...[
               const SizedBox(height: 7),
               TrendSparkline(
@@ -484,10 +483,12 @@ class _LeaderPainter extends CustomPainter {
   return (low, high);
 }
 
-/// The level over the last minute or so, scaled to its own range.
+/// The level over the last minute or so, on a fixed -140…-20 dBm scale.
 ///
-/// The window is never narrower than 12 dB, so a link that barely moves draws a
-/// flat line instead of magnifying a couple of dB of noise into a cliff.
+/// A fixed scale is what makes two readings comparable: a link at -107 and one
+/// at -117 are 10 dB apart on the meter above, and they are 10 dB apart here.
+/// Auto-scaling would magnify a couple of dB of noise into a cliff and draw
+/// both links identically.
 class TrendSparkline extends StatelessWidget {
   const TrendSparkline({
     super.key,
@@ -521,29 +522,25 @@ class _TracePainter extends CustomPainter {
 
   static const Color _grid = Color(0x14FFFFFF);
 
+  /// The scale every trace is drawn on, in dBm.
+  static const int _floorDbm = -140;
+  static const int _ceilingDbm = -20;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (samples.length < 2) return;
-    var low = 1 << 20;
-    var high = -(1 << 20);
-    for (final sample in samples) {
-      if (sample == null) continue;
-      if (sample < low) low = sample;
-      if (sample > high) high = sample;
-    }
-    if (low > high) return;
-    final span = (high - low) < 12 ? 12.0 : (high - low).toDouble();
-    final top = (high + low) / 2 - span / 2;
-    double y(int dbm) => size.height - ((dbm - top) / span) * size.height;
+    const span = _ceilingDbm - _floorDbm;
+    double y(int dbm) =>
+        size.height -
+        ((dbm.clamp(_floorDbm, _ceilingDbm) - _floorDbm) / span) * size.height;
     double x(int index) => index * size.width / (samples.length - 1);
 
-    canvas.drawLine(
-      Offset(0, size.height - 0.5),
-      Offset(size.width, size.height - 0.5),
-      Paint()
-        ..color = _grid
-        ..strokeWidth = 1,
-    );
+    final grid = Paint()
+      ..color = _grid
+      ..strokeWidth = 1;
+    for (final dbm in const <int>[_ceilingDbm, -80, _floorDbm]) {
+      canvas.drawLine(Offset(0, y(dbm)), Offset(size.width, y(dbm)), grid);
+    }
 
     final line = Path();
     var started = false;
