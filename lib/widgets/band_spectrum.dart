@@ -458,7 +458,7 @@ class _BandSpectrumState extends State<BandSpectrum> {
               // The level is already the header's STRENGTH; naming it again
               // here is what pushed the caption into the numbers.
               title: inverse
-                  ? 'Uplink · inverse'
+                  ? 'Uplink · calculated'
                   : txPower == null
                   ? 'Uplink · no TX read'
                   : 'Uplink · TX $txPower dBm',

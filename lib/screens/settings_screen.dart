@@ -109,8 +109,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => _carrierStatus = status);
   }
 
-  /// Turns the inverse uplink mask on or off. It only changes how the spectrum
-  /// page draws, so the stored flag is the whole effect.
+  /// Switches the calculated uplink mask on or off. It only changes how the
+  /// spectrum page draws, so the stored flag is the whole effect.
   Future<void> _setUplinkInverse(bool value) async {
     await AppSettings.setUplinkInverse(value);
     if (mounted) setState(() {});
@@ -224,12 +224,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SettingsCard(
             children: [
               _SettingsSwitch(
-                title: 'Inverse uplink mask',
+                title: 'Calculated uplink mask',
                 subtitle:
-                    'Draws the uplink as the mirror of the downlink: a strong '
-                    'downlink needs little back, and a weak one needs more. '
-                    'Off, the mask sits at the transmit power when the radio '
-                    'reports one, otherwise at LTE power class 3 (23 dBm).',
+                    'Works the uplink out from the downlink instead of the '
+                    'reported power: a strong downlink gets a low mask, rising '
+                    'as the signal weakens. It covers half its range over the '
+                    '60 dB above -100 dBm and the rest below that, never under '
+                    'a quarter of the band\u2019s power-class ceiling (23 dBm, '
+                    'up to 31 on band 14). Off, the mask sits at the reported '
+                    'transmit power, or 23 dBm when none is reported.',
                 value: AppSettings.uplinkInverse,
                 onChanged: (value) => unawaited(_setUplinkInverse(value)),
               ),

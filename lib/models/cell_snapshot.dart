@@ -815,6 +815,8 @@ class SimReading {
     this.callState = 'idle',
     this.voiceNetworkType,
     this.ims = const ImsAvailability(),
+    this.dataState = -1,
+    this.dataActivity = -1,
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -840,6 +842,8 @@ class SimReading {
       callState: _string(map['callState']) ?? 'idle',
       voiceNetworkType: _int(map['voiceNetworkType']),
       ims: ImsAvailability.fromMap(map['ims'] as Map<Object?, Object?>?),
+      dataState: _int(map['dataState']) ?? -1,
+      dataActivity: _int(map['dataActivity']) ?? -1,
     );
   }
 
@@ -880,6 +884,38 @@ class SimReading {
 
   /// What the carrier says the network can carry.
   final ImsAvailability ims;
+
+  /// `TelephonyManager.getDataState()`: -1 unknown, 0 disconnected,
+  /// 1 connecting, 2 connected, 3 suspended.
+  final int dataState;
+
+  /// `TelephonyManager.getDataActivity()`: -1 unknown, 0 idle, 1 down,
+  /// 2 up, 3 up and down, 4 dormant.
+  final int dataActivity;
+
+  /// The data connection as one line, e.g. `Connected · up + down`. Null when
+  /// neither reading arrived.
+  String? get dataLabel {
+    final state = switch (dataState) {
+      0 => 'Disconnected',
+      1 => 'Connecting',
+      2 => 'Connected',
+      3 => 'Suspended',
+      _ => null,
+    };
+    final activity = switch (dataActivity) {
+      0 => 'idle',
+      1 => 'down',
+      2 => 'up',
+      3 => 'up + down',
+      4 => 'dormant',
+      _ => null,
+    };
+    if (state == null && activity == null) return null;
+    if (state == null) return activity;
+    if (state == 'Disconnected') return state;
+    return activity == null ? state : '$state · $activity';
+  }
 
   bool get inCall => callState == 'ringing' || callState == 'offhook';
 

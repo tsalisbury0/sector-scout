@@ -1,6 +1,7 @@
 import 'package:cell_tower_monitor/models/band_filters.dart';
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
 import 'package:cell_tower_monitor/screens/home_screen.dart';
+import 'package:cell_tower_monitor/services/serving_view.dart';
 import 'package:cell_tower_monitor/theme/app_colors.dart';
 import 'package:cell_tower_monitor/widgets/signal_bars.dart';
 import 'package:cell_tower_monitor/widgets/tech_badge.dart';
@@ -1569,6 +1570,32 @@ void main() {
       expect(standard.downlinkLabel, '938.00 MHz');
       expect(standard.uplinkLabel, '899.00 MHz');
       expect(standard.displayedArfcn, 70686);
+    });
+  });
+
+  group('mobile data', () {
+    SimReading reading({int? state, int? activity}) =>
+        SimReading.fromMap(<Object?, Object?>{
+          'slotIndex': 0,
+          'dataState': ?state,
+          'dataActivity': ?activity,
+        });
+
+    test('names the connection state and traffic direction', () {
+      expect(
+        reading(state: 2, activity: 3).dataLabel,
+        'Connected · up + down',
+      );
+      expect(reading(state: 2, activity: 0).dataLabel, 'Connected · idle');
+      expect(reading(state: 0, activity: 0).dataLabel, 'Disconnected');
+      expect(reading(activity: 1).dataLabel, 'down');
+      expect(reading().dataLabel, isNull);
+    });
+
+    test('the Radio rows carry the data line', () {
+      final row = ServingView.qualityEntries(reading(state: 2, activity: 2))
+          .firstWhere((entry) => entry.key == 'Mobile data');
+      expect(row.value, 'Connected · up');
     });
   });
 }

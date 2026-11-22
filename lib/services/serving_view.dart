@@ -140,11 +140,16 @@ class ServingView {
     final lte = sim.lteServing;
     final nr = sim.nrServing;
 
-    if (sim.isNsa && lte != null && nr != null) {
-      return [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')];
-    }
-    final cell = sim.serving;
-    return cell == null ? const [] : qualityFor(cell, null);
+    final entries = sim.isNsa && lte != null && nr != null
+        ? [...qualityFor(lte, 'LTE'), ...qualityFor(nr, 'NR')]
+        : (sim.serving == null
+              ? <MapEntry<String, String>>[]
+              : qualityFor(sim.serving!, null));
+    // Android's data state and activity, the direction arrows the status bar
+    // shows: whether the connection is up, and which way traffic is moving.
+    final data = sim.dataLabel;
+    if (data != null) entries.add(MapEntry('Mobile data', data));
+    return entries;
   }
 
   /// The component carriers, one row each, in the order the radio reports

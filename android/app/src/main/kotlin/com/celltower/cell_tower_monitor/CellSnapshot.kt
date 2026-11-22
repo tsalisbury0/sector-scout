@@ -139,6 +139,13 @@ object CellSnapshot {
         m["slotIndex"] = sub.slotIndex
         m["subscriptionId"] = sub.subscriptionId
         m["isDefault"] = sub.isDefault
+        // Mobile data, the way the status bar reads it: getDataState() says
+        // whether the connection is up, getDataActivity() says which way
+        // traffic is moving right now (none / in / out / both / dormant).
+        // Both are public API with READ_PHONE_STATE, which the app already has.
+        m["dataState"] = safe { tm?.dataState } ?: TelephonyManager.DATA_UNKNOWN
+        m["dataActivity"] =
+            safe { tm?.dataActivity } ?: TelephonyManager.DATA_ACTIVITY_NONE
         m["carrierName"] = sub.carrierName
         m["simState"] = simStateName(safe { tm?.simState } ?: TelephonyManager.SIM_STATE_UNKNOWN)
         m["networkTypeName"] = networkTypeName(
