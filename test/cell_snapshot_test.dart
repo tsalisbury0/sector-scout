@@ -1614,14 +1614,16 @@ void main() {
       expect(reading(state: 2, activity: 3).dataArrows, (true, true));
     });
 
-    test('the uplink mask needs live mobile data', () {
-      expect(reading(state: 2, activity: 1).dataActive, isTrue);
-      expect(reading(state: 2, activity: 2).dataActive, isTrue);
-      expect(reading(state: 2, activity: 3).dataActive, isTrue);
-      expect(reading(state: 2, activity: 0).dataActive, isFalse);
-      expect(reading(state: 2, activity: 4).dataActive, isFalse);
-      expect(reading(state: 3, activity: 1).dataActive, isFalse);
-      expect(reading(state: 2, activity: 1, mobile: false).dataActive, isFalse);
+    test('the uplink mask follows the connection, not the traffic', () {
+      // Idle and dormant are still connected links: signalling keeps going.
+      expect(reading(state: 2, activity: 0).dataInUse, isTrue);
+      expect(reading(state: 2, activity: 4).dataInUse, isTrue);
+      expect(reading(state: 2, activity: 3).dataInUse, isTrue);
+      expect(reading(state: 1, activity: 0).dataInUse, isTrue);
+      // Suspended, disconnected, or mobile data not in use: no uplink.
+      expect(reading(state: 3, activity: 0).dataInUse, isFalse);
+      expect(reading(state: 0, activity: 0).dataInUse, isFalse);
+      expect(reading(state: 2, activity: 0, mobile: false).dataInUse, isFalse);
     });
   });
 }

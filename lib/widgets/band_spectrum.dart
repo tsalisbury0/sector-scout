@@ -413,11 +413,10 @@ class _BandSpectrumState extends State<BandSpectrum> {
         (selected.role == 'PCC' || selected.role == '5G') &&
         selected.uplinkMhz != null &&
         selected.uplinkBlock != null;
-    // The uplink mask is a live reading rather than a plan, so it is drawn
-    // only while the phone is actually passing mobile data. Idle, suspended or
-    // disconnected hides the panel outright — a quiet mask would look like a
-    // measurement of nothing.
-    final dataActive = widget.sim.dataActive;
+    // The uplink mask belongs to the data connection, not to the traffic: an
+    // idle link still sends its signalling, so the mask stays while mobile data
+    // is in use and only goes away when there is no connection to draw.
+    final dataInUse = widget.sim.dataInUse;
     final txPower = selected.carrier.txPowerDbm;
     final inverse = AppSettings.uplinkInverse;
     final maxTx = maxUplinkDbm(selected.block.band, is5g: selected.is5g);
@@ -442,7 +441,7 @@ class _BandSpectrumState extends State<BandSpectrum> {
           title: tdd ? 'TDD · DL and UL' : 'Downlink',
           summary: selected,
         ),
-        if (!tdd && dataActive) ...[
+        if (!tdd && dataInUse) ...[
           const SizedBox(height: 10),
           if (!canUplink)
             _UplinkAbsentNote(

@@ -903,14 +903,14 @@ class SimReading {
   /// while nothing is being sent over it.
   final bool dataOnMobile;
 
-  /// Whether mobile data is up and moving bytes in either direction.
+  /// Whether mobile data is the connection in use, whatever the traffic is
+  /// doing right now.
   ///
-  /// The spectrum page draws the uplink mask only while this holds: an idle,
-  /// suspended or disconnected link has no transmit picture to show.
-  bool get dataActive =>
-      dataOnMobile &&
-      dataState == 2 &&
-      (dataActivity == 1 || dataActivity == 2 || dataActivity == 3);
+  /// The spectrum page keeps its uplink mask while this holds: an idle link
+  /// still sends its signalling, so the transmit picture is real even when both
+  /// arrows are grey. Only a slot with no data connection in use — no SIM,
+  /// Wi-Fi, unregistered, suspended or disconnected — has nothing to draw.
+  bool get dataInUse => dataOnMobile && (dataState == 1 || dataState == 2);
 
   /// The direction pair the header draws under the technology badge, or null
   /// when it draws none.
@@ -920,9 +920,7 @@ class SimReading {
   /// connected but quiet link gets both arrows in the muted ink, so "up with no
   /// traffic" still looks different from "no connection".
   (bool, bool)? get dataArrows {
-    if (!dataOnMobile) return null;
-    // Connecting counts: the link is being brought up, not suspended.
-    if (dataState != 1 && dataState != 2) return null;
+    if (!dataInUse) return null;
     return switch (dataActivity) {
       1 => (false, true),
       2 => (true, false),

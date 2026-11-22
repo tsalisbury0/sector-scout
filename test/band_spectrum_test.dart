@@ -376,35 +376,43 @@ void main() {
     expect(find.textContaining('UPLINK'), findsOneWidget);
   });
 
-  testWidgets('an idle mobile link hides the uplink panel', (tester) async {
-    final sim = SimReading.fromMap(<Object?, Object?>{
-      'slotIndex': 0,
-      'simState': 'READY',
-      'dataOnMobile': true,
-      'dataState': 2,
-      'dataActivity': 0,
-      'carriers': <Object?>[
-        <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000},
-      ],
-      'cells': <Object?>[
-        <Object?, Object?>{
-          'type': 'LTE',
-          'registered': true,
-          'pci': 148,
-          'arfcn': 66486,
-          'bands': <Object?>[66],
-          'dbm': -89,
-        },
-      ],
-    });
-    await tester.pumpWidget(
+  testWidgets('the uplink mask follows mobile data, not the traffic', (
+    tester,
+  ) async {
+    SimReading sim({required bool mobile}) =>
+        SimReading.fromMap(<Object?, Object?>{
+          'slotIndex': 0,
+          'simState': 'READY',
+          'dataOnMobile': mobile,
+          'dataState': 2,
+          'dataActivity': 0,
+          'carriers': <Object?>[
+            <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000},
+          ],
+          'cells': <Object?>[
+            <Object?, Object?>{
+              'type': 'LTE',
+              'registered': true,
+              'pci': 148,
+              'arfcn': 66486,
+              'bands': <Object?>[66],
+              'dbm': -89,
+            },
+          ],
+        });
+    Future<void> pump(SimReading reading) => tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+          body: SingleChildScrollView(child: BandSpectrum(sim: reading)),
         ),
       ),
     );
+    // Idle but connected: signalling still goes up, so the mask stays.
+    await pump(sim(mobile: true));
     expect(find.text('DOWNLINK'), findsOneWidget);
+    expect(find.textContaining('UPLINK'), findsOneWidget);
+    // On Wi-Fi the mobile connection is not the one in use: no mask.
+    await pump(sim(mobile: false));
     expect(find.textContaining('UPLINK'), findsNothing);
   });
 
