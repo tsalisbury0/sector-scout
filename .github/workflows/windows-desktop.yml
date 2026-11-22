@@ -42,7 +42,34 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        shell: pwsh
+        # The analyzer's own words are what a failure is diagnosed from, so it
+        # is teed into a log the next step can publish.
+        run: |
+          flutter analyze 2>&1 | Tee-Object -FilePath analyze.log
+          exit $LASTEXITCODE
+
+      - name: Publish the analyzer output when it fails
+        if: failure()
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Analyze failed. Full output:"
+          if (Test-Path analyze.log) {
+            Get-Content analyze.log | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+          } else {
+            "no analyze log written" | Out-File analyze.log
+          }
+          # Job logs need a login; a public branch does not, so the output is
+          # parked there for whoever is diagnosing the failure.
+          git config user.name "ci"
+          git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan ci-analyze-log
+          git rm -rf --cached . | Out-Null
+          git add -f analyze.log
+          git commit -m "Analyze log"
+          git push -f "https://x-access-token:$env:TOKEN@github.com/${{ github.repository }}.git" ci-analyze-log
 
       - name: Test
         run: flutter test
