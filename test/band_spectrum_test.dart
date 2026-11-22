@@ -165,10 +165,28 @@ void main() {
       expect(placed.map((carrier) => carrier.role), ['PCC', 'CA']);
     });
 
-    test('one placed layer carries the level its mask is drawn at', () {
-      final sim = _band66();
+    test('a placed layer uses the level the Carriers card prints', () {
+      final sim = SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 148,
+            'arfcn': 66486,
+            'bands': <Object?>[66],
+            // The card prints dbm; rsrp is a different reading and the graph
+            // has to agree with the card, not with the other number.
+            'dbm': -106,
+            'rsrp': -103,
+          },
+        ],
+      });
       final placed = placeCarrier(sim, sim.carriers.single)!;
-      expect(placed.levelDbm, -89);
+      expect(placed.levelDbm, -106);
     });
 
     test('band 106 draws 3 MHz at 938.0 and 1.4 MHz elsewhere', () {

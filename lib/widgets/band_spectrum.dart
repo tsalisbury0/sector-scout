@@ -215,7 +215,10 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
     uplinkMhz: cell?.uplinkMhz,
     uplinkBlock: bandUplinkBlock(band, is5g: is5g),
     widthMhz: _drawnWidth(band: band, centerMhz: center, is5g: is5g),
-    levelDbm: cell?.rsrp ?? cell?.dbm,
+    // The same level the Carriers card prints, not the RSRP beside it: the two
+    // differ by a few dB on most radios, and a graph that disagreed with the
+    // number directly above it read as the wrong cell.
+    levelDbm: cell?.dbm,
   );
 }
 
