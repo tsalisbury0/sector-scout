@@ -1,5 +1,4 @@
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
-import 'package:cell_tower_monitor/theme/app_colors.dart';
 import 'package:cell_tower_monitor/widgets/band_spectrum.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,7 +51,7 @@ void main() {
   });
 
   group('bands covering a carrier', () {
-    test('a 2110–2120 channel is inside bands 4, 10, 65 and 66', () {
+    test('band 66 lists its MFBI aliases 4 and 10, not 65 or 1', () {
       final bands = bandsCovering(
         2110,
         2120,
@@ -61,7 +60,22 @@ void main() {
       ).map((band) => band.band).toList();
       expect(bands.first, 66, reason: 'the reported band leads');
       expect(bands, containsAll(<int>[4, 10, 66]));
-      expect(bands, isNot(contains(2)));
+      expect(bands, isNot(contains(65)));
+      expect(bands, isNot(contains(1)));
+      expect(bands, isNot(contains(9)));
+    });
+
+    test('band 2 lists band 25, not band 1 or 3', () {
+      final bands = bandsCovering(
+        1930,
+        1940,
+        is5g: false,
+        reported: 2,
+      ).map((band) => band.band).toList();
+      expect(bands.first, 2);
+      expect(bands, contains(25));
+      expect(bands, isNot(contains(1)));
+      expect(bands, isNot(contains(3)));
     });
 
     test('the rest are ordered narrowest first, so they nest', () {
@@ -151,11 +165,81 @@ void main() {
       expect(placed.map((carrier) => carrier.role), ['PCC', 'CA']);
     });
 
-    test('an aggregated layer is red on the uplink, the anchor green', () {
-      final ca = _carrier(66, 2115)..role = 'CA 1';
-      final pcc = _carrier(2, 1960)..role = 'PCC';
-      expect(uplinkMaskColor(ca), AppColors.danger);
-      expect(uplinkMaskColor(pcc), AppColors.accent);
+    test('one placed layer carries the level its mask is drawn at', () {
+      final sim = _band66();
+      final placed = placeCarrier(sim, sim.carriers.single)!;
+      expect(placed.levelDbm, -89);
+    });
+
+    test('band 106 draws 3 MHz at 938.0 and 1.4 MHz elsewhere', () {
+      SimReading b106(int arfcn) => SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 106, 'bw': 5000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 11,
+            'arfcn': arfcn,
+            'bands': <Object?>[106],
+            'dbm': -88,
+          },
+        ],
+      });
+      // 70656 is band 106's first channel at 935 MHz, so 70686 is 938.0.
+      final at938 = b106(70686);
+      final placed = placeCarrier(at938, at938.carriers.single)!;
+      expect(placed.centerMhz, closeTo(938.0, 0.005));
+      expect(placed.bandwidthMhz, 3.0);
+
+      final elsewhere = b106(70660);
+      expect(
+        placeCarrier(elsewhere, elsewhere.carriers.single)!.bandwidthMhz,
+        1.4,
+      );
+    });
+
+    test('the inverse uplink mirrors the downlink and keeps a quarter', () {
+      // Strong downlink: the mask may fall no further than a quarter.
+      expect(
+        uplinkPeakDbm(
+          levelDbm: -20,
+          txPowerDbm: null,
+          inverse: true,
+          maxDbm: 23,
+        ),
+        closeTo(5.75, 0.01),
+      );
+      // Weak downlink: transmit at the band's ceiling.
+      expect(
+        uplinkPeakDbm(
+          levelDbm: -140,
+          txPowerDbm: null,
+          inverse: true,
+          maxDbm: 23,
+        ),
+        closeTo(23, 0.01),
+      );
+      // Off, the reported power wins.
+      expect(
+        uplinkPeakDbm(
+          levelDbm: -60,
+          txPowerDbm: 12,
+          inverse: false,
+          maxDbm: 23,
+        ),
+        12,
+      );
+    });
+
+    test('power-class ceilings follow the band', () {
+      expect(maxUplinkDbm(2), 23);
+      expect(maxUplinkDbm(41), 26);
+      expect(maxUplinkDbm(14), 31);
+      expect(maxUplinkDbm(41, is5g: true), 29);
+      expect(maxUplinkDbm(78, is5g: true), 26);
     });
 
     test('a TDD layer has one block for both directions', () {
@@ -252,6 +336,46 @@ void main() {
     );
     expect(find.text('TDD · DOWNLINK AND UPLINK'), findsOneWidget);
     expect(find.textContaining('UPLINK · TX'), findsNothing);
+  });
+
+  testWidgets('an aggregated layer points at the anchor for its uplink', (
+    tester,
+  ) async {
+    final sim = SimReading.fromMap(<Object?, Object?>{
+      'slotIndex': 0,
+      'carriers': <Object?>[
+        <Object?, Object?>{'net': 13, 'band': 2, 'bw': 10000, 'pci': 100},
+        <Object?, Object?>{'net': 19, 'band': 66, 'bw': 10000, 'pci': 148},
+      ],
+      'cells': <Object?>[
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': true,
+          'pci': 100,
+          'arfcn': 900,
+          'bands': <Object?>[2],
+          'dbm': -95,
+        },
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': false,
+          'pci': 148,
+          'arfcn': 66486,
+          'bands': <Object?>[66],
+          'dbm': -101,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+        ),
+      ),
+    );
+    await tester.tap(find.text('CA B66'));
+    await tester.pump();
+    expect(find.textContaining('anchor only'), findsOneWidget);
   });
 
   testWidgets('a supplemental downlink says it has no uplink', (tester) async {

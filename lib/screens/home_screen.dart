@@ -1110,15 +1110,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             '${prefix}PCC \u00b7 SDL \u00b7 CA spectrum',
             note:
                 'One button per component carrier: the anchor, any '
-                'supplemental downlink, and every aggregated layer. The mask '
-                'is LTE\u2019s transmit spectrum, squared off across the '
-                'channel and falling to \u221245 dBc at its edges, drawn on the '
-                'band tables\u2019 own blocks \u2014 so 2115 MHz is listed '
-                'under band 4, band 10 and band 66 at once, with the reported '
-                'band marked in green. The uplink graph below puts the same '
-                'carrier on its transmit frequency; when the radio reports a '
-                'transmit power it is drawn at that level, otherwise at the '
-                '23 dBm of LTE power class 3.',
+                'supplemental downlink, and every aggregated layer. Each mask '
+                'is squared off across its channel, and its height is the '
+                'level the radio hears it at \u2014 RSRP on the downlink, '
+                'transmit power on the uplink. The rails are the band tables\u2019 '
+                'own blocks, so 2115 MHz is listed under band 4, band 10 and '
+                'band 66 at once, with the reported band marked in green. '
+                'Uplink is drawn for the anchor alone, and a TDD band needs '
+                'one graph because both directions share the block. B106 is '
+                'drawn at its real width: 3 MHz at 938.0 MHz, 1.4 MHz '
+                'elsewhere.',
           ),
           const SizedBox(height: 10),
           BandSpectrum(sim: sim),

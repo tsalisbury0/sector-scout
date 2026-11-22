@@ -109,6 +109,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() => _carrierStatus = status);
   }
 
+  /// Turns the inverse uplink mask on or off. It only changes how the spectrum
+  /// page draws, so the stored flag is the whole effect.
+  Future<void> _setUplinkInverse(bool value) async {
+    await AppSettings.setUplinkInverse(value);
+    if (mounted) setState(() {});
+  }
+
   Future<bool> _confirmNorthAmerica() async {
     final answer = await showDialog<bool>(
       context: context,
@@ -204,6 +211,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: value,
                   apply: AppSettings.setAnterixB106,
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _SectionLabel(
+            'Spectrum',
+            note:
+                'How the spectrum page draws the masks. It never changes what '
+                'the radio reports.',
+          ),
+          _SettingsCard(
+            children: [
+              _SettingsSwitch(
+                title: 'Inverse uplink mask',
+                subtitle:
+                    'Draws the uplink as the mirror of the downlink: a strong '
+                    'downlink needs little back, and a weak one needs more. '
+                    'Off, the mask sits at the transmit power when the radio '
+                    'reports one, otherwise at LTE power class 3 (23 dBm).',
+                value: AppSettings.uplinkInverse,
+                onChanged: (value) => unawaited(_setUplinkInverse(value)),
               ),
             ],
           ),

@@ -17,6 +17,13 @@ class AppSettings {
   /// it does nothing on a phone without Shizuku.
   static bool carrierDetail = true;
 
+  /// Whether the uplink spectrum mask mirrors the downlink level instead of
+  /// sitting at a transmit power the platform almost never reports.
+  ///
+  /// Off unless switched on: it is a reading of the link, not a measurement of
+  /// the transmitter, so the plain graph is what a fresh install shows.
+  static bool uplinkInverse = false;
+
   /// Reads the stored switches into [BandFilters], before the first frame.
   static Future<void> load() async {
     try {
@@ -31,6 +38,7 @@ class AppSettings {
       // installs this build fresh keeps the 3GPP numbering.
       BandFilters.anterixB106 = raw['anterixB106'] == true;
       AppSettings.carrierDetail = raw['carrierDetail'] != false;
+      AppSettings.uplinkInverse = raw['uplinkInverse'] == true;
     } on PlatformException {
       // Nothing stored yet; the defaults stand.
     } on MissingPluginException {
@@ -58,6 +66,12 @@ class AppSettings {
   static Future<void> setCarrierDetail(bool value) async {
     carrierDetail = value;
     await _store('carrierDetail', value);
+  }
+
+  /// Mirrors the uplink mask on the downlink level, or stops doing so.
+  static Future<void> setUplinkInverse(bool value) async {
+    uplinkInverse = value;
+    await _store('uplinkInverse', value);
   }
 
   static Future<void> _store(String key, bool value) async {

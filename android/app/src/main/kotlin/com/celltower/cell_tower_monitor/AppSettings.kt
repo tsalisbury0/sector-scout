@@ -20,6 +20,7 @@ object AppSettings {
     const val KEY_CBRS = "cbrs"
     const val KEY_B106 = "anterixB106"
     const val KEY_CARRIER_DETAIL = "carrierDetail"
+    const val KEY_UPLINK_INVERSE = "uplinkInverse"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -46,12 +47,21 @@ object AppSettings {
     fun carrierDetail(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CARRIER_DETAIL, true)
 
+    /**
+     * The uplink mask mirrors the downlink level, **off** unless switched on.
+     * It changes how the spectrum page is drawn, nothing the service reports,
+     * so it only has to persist for the Flutter side.
+     */
+    fun uplinkInverse(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_UPLINK_INVERSE, false)
+
     /** Every switch, in the shape the method channel returns. */
     fun all(context: Context): Map<String, Any> = mapOf(
         KEY_TMOBILE to tmobileBands(context),
         KEY_CBRS to cbrs(context),
         KEY_B106 to anterixB106(context),
         KEY_CARRIER_DETAIL to carrierDetail(context),
+        KEY_UPLINK_INVERSE to uplinkInverse(context),
     )
 
     /**
