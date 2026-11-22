@@ -116,6 +116,26 @@ jobs:
           $version = "${{ github.ref_name }}".TrimStart("v")
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" "desktop\Sector Scout.iss"
 
+      - name: Package the console
+        shell: pwsh
+        # The same layout the release ships: the script, its icon and the data
+        # files it reads, in a folder someone can unzip and run.
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          if (-not $version) { $version = "main" }
+          $root = "sector-scout-desktop-$version"
+          New-Item -ItemType Directory -Force -Path "$root/desktop" | Out-Null
+          Copy-Item desktop/sector_scout_desktop.py,desktop/sector_scout.ico,desktop/requirements.txt "$root/desktop/"
+          Copy-Item bands.json "$root/bands.json"
+          Add-Content -Path "$root/README.txt" -Value "Sector Scout Desktop`n`nNeeds Python 3 on Windows. There is nothing to install: the console uses tkinter, which ships with Python.`n`n    python desktop\sector_scout_desktop.py"
+          Compress-Archive -Path $root -DestinationPath "$root.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sector-scout-desktop
+          path: sector-scout-desktop-*.zip
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@v4
         with:
           name: sector-scout-windows
