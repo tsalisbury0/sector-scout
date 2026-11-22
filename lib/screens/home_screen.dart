@@ -978,9 +978,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // The spectrum page needs a frequency and a width for at least one layer:
     // without them there is no mask to place on the dial, so the tab stays
     // hidden rather than opening on an empty chart.
-    final canSpectrum = sim.carriers.any(
-      (carrier) => placeCarrier(sim, carrier) != null,
-    );
+    // Band 106 can place its own mask from the serving cell alone, so this
+    // asks what the spectrum page can draw rather than what carriers exist.
+    final canSpectrum = spectrumCarriers(sim).isNotEmpty;
     final tabs = <String>[
       'Cell',
       'Radio',
@@ -1112,14 +1112,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 'One button per component carrier: the anchor, any '
                 'supplemental downlink, and every aggregated layer. Each mask '
                 'is squared off across its channel, and its height is the '
-                'level the radio hears it at \u2014 RSRP on the downlink, '
-                'transmit power on the uplink. The rails are the band tables\u2019 '
-                'own blocks, so 2115 MHz is listed under band 4, band 10 and '
-                'band 66 at once, with the reported band marked in green. '
-                'Uplink is drawn for the anchor alone, and a TDD band needs '
-                'one graph because both directions share the block. B106 is '
-                'drawn at its real width: 3 MHz at 938.0 MHz, 1.4 MHz '
-                'elsewhere.',
+                'level the radio hears it at \u2014 the Carriers card\u2019s '
+                'dBm on the downlink, transmit power on the uplink, from 23 '
+                'dBm up to 31 on band 14. The rails list only the reported '
+                'band\u2019s MFBI aliases, narrowest first: 2115 MHz shows 4 '
+                'and 10 under 66, not every block it overlaps. Uplink is '
+                'drawn for the anchor alone, and a TDD band needs one graph '
+                'because both directions share the block. B106 is drawn at its '
+                'real width \u2014 3 MHz at 938.0 MHz, 1.4 MHz elsewhere \u2014 '
+                'even without the privileged reader.',
           ),
           const SizedBox(height: 10),
           BandSpectrum(sim: sim),

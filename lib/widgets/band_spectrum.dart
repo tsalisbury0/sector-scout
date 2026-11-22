@@ -93,10 +93,10 @@ List<BandBlock> bandsCovering(
     }
     blocks.add(block);
   }
+  // Narrowest first, widest last: the rails stack outward from the band that
+  // fits tightest to the one that covers everything, so the nesting reads
+  // top to bottom instead of jumping around.
   blocks.sort((a, b) {
-    final aReported = a.band == reported ? 0 : 1;
-    final bReported = b.band == reported ? 0 : 1;
-    if (aReported != bReported) return aReported - bReported;
     final byWidth = a.width.compareTo(b.width);
     return byWidth != 0 ? byWidth : a.band.compareTo(b.band);
   });
@@ -271,6 +271,35 @@ List<SpectrumCarrier> spectrumCarriers(SimReading sim) {
   final placed = <SpectrumCarrier>[
     for (final carrier in sim.carriers) ?placeCarrier(sim, carrier),
   ];
+  // Band 106 does not need the privileged reader: one serving cell on the
+  // utility network is the whole carrier, so the spectrum stays available
+  // when Shizuku is off and there are no component carriers to list.
+  if (placed.isEmpty) {
+    final cell = sim.lteServing;
+    final center = cell?.downlinkMhz;
+    final block = bandBlock(106, is5g: false);
+    if (cell != null &&
+        cell.sharedBands?.contains(106) == true &&
+        block != null &&
+        center != null) {
+      placed.add(
+        SpectrumCarrier(
+          carrier: const RadioCarrier(
+            tech: CellTech.lte,
+            band: 106,
+            bandwidthKhz: 3000,
+          ),
+          centerMhz: center,
+          block: block,
+          role: 'PCC',
+          uplinkMhz: cell.uplinkMhz,
+          uplinkBlock: bandUplinkBlock(106, is5g: false),
+          widthMhz: _drawnWidth(band: 106, centerMhz: center, is5g: false),
+          levelDbm: cell.dbm,
+        ),
+      );
+    }
+  }
   if (!placed.any((carrier) => carrier.role == 'PCC')) {
     for (final carrier in placed) {
       if (carrier.carrier.tech == CellTech.lte && carrier.role != 'SDL') {
@@ -393,7 +422,8 @@ class _BandSpectrumState extends State<BandSpectrum> {
         const SizedBox(height: 10),
         _SpectrumPanel(
           carriers: cluster,
-          title: tdd ? 'TDD · downlink and uplink' : 'Downlink',
+          title: tdd ? 'TDD · DL and UL' : 'Downlink',
+          summary: selected,
         ),
         if (!tdd) ...[
           const SizedBox(height: 10),
@@ -412,6 +442,7 @@ class _BandSpectrumState extends State<BandSpectrum> {
               uplink: true,
               uplinkPeakDbm: peak,
               uplinkCeilingDbm: maxTx.toDouble(),
+              summary: selected,
               title: inverse
                   ? 'Uplink · inverse of downlink · ${peak.round()} dBm'
                   : txPower == null
@@ -525,8 +556,16 @@ double uplinkPeakDbm({
   final ceiling = maxDbm.toDouble();
   final reported = (txPowerDbm ?? maxDbm).clamp(0, maxDbm).toDouble();
   if (!inverse || levelDbm == null) return reported;
-  final strength = ((levelDbm.clamp(-140, -20) + 140) / 120).clamp(0.0, 1.0);
-  return ceiling * (0.25 + 0.75 * (1 - strength));
+  // How weak the downlink is, 0 (strong) to 1 (barely there). The first 60 dB
+  // above -100 only move the mask half way: a phone can turn its power well
+  // down before the link is marginal, so the uplink should not chase every dB
+  // of a good signal. The last 40 dB move the rest, because below -100 each
+  // one is a dB the transmitter has to make up.
+  final db = levelDbm.clamp(-140, -40).toDouble();
+  final weakness = db >= -100
+      ? (-40 - db) / 60 * 0.5
+      : 0.5 + (-100 - db) / 40 * 0.5;
+  return ceiling * (0.25 + 0.75 * weakness);
 }
 
 /// A layer with no uplink mask to draw, said plainly rather than as an empty
@@ -553,6 +592,50 @@ class _UplinkAbsentNote extends StatelessWidget {
   }
 }
 
+/// One labelled number in a panel's header, two lines tall so three of them
+/// fit beside the chart's name.
+class _PanelStat extends StatelessWidget {
+  const _PanelStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 6.5,
+            letterSpacing: 0.7,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          value,
+          style: monospace.copyWith(
+            fontSize: 8.5,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 2110 → "2110", 2112.5 → "2112.5".
+String _formatMhz(double mhz) {
+  final rounded = double.parse(mhz.toStringAsFixed(1));
+  return rounded == rounded.roundToDouble()
+      ? rounded.toStringAsFixed(0)
+      : rounded.toStringAsFixed(1);
+}
+
 class _SpectrumPanel extends StatelessWidget {
   const _SpectrumPanel({
     required this.carriers,
@@ -560,6 +643,7 @@ class _SpectrumPanel extends StatelessWidget {
     this.uplinkPeakDbm,
     this.uplinkCeilingDbm = 23,
     this.title,
+    this.summary,
   });
 
   final List<SpectrumCarrier> carriers;
@@ -567,6 +651,10 @@ class _SpectrumPanel extends StatelessWidget {
   final double? uplinkPeakDbm;
   final double uplinkCeilingDbm;
   final String? title;
+
+  /// The carrier the header's numbers describe, when the panel is showing a
+  /// cluster and not every mask in it is the selected one.
+  final SpectrumCarrier? summary;
 
   /// Six rows is what fits before the rails outgrow the plot they explain.
   static const int _maxBands = 6;
@@ -611,6 +699,14 @@ class _SpectrumPanel extends StatelessWidget {
     const axisHeight = 20.0;
     final height = plotHeight + 8 + bands.length * bandRow + axisHeight;
     final caption = title;
+    final statsMhz = summary == null
+        ? null
+        : (uplink ? summary!.uplinkMhz : summary!.centerMhz);
+    final statsLevel = summary == null
+        ? null
+        : (uplink
+              ? (uplinkPeakDbm ?? uplinkCeilingDbm)
+              : summary!.levelDbm);
 
     return Container(
       decoration: BoxDecoration(
@@ -624,15 +720,45 @@ class _SpectrumPanel extends StatelessWidget {
         children: [
           if (caption != null)
             Padding(
-              padding: const EdgeInsets.only(left: 26, bottom: 6),
-              child: Text(
-                caption.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 8.5,
-                  letterSpacing: 1,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textMuted,
-                ),
+              padding: const EdgeInsets.only(left: 26, right: 2, bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Text(
+                      caption.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 8.5,
+                        letterSpacing: 1,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  if (summary != null) ...[
+                    _PanelStat(
+                      label: 'STRENGTH',
+                      value: statsLevel == null
+                          ? '\u2014'
+                          : '${statsLevel.round()} dBm',
+                    ),
+                    const SizedBox(width: 9),
+                    _PanelStat(
+                      label: 'FREQ',
+                      value: statsMhz == null
+                          ? '\u2014'
+                          : '${_formatMhz(statsMhz)} MHz',
+                    ),
+                    const SizedBox(width: 9),
+                    _PanelStat(
+                      label: 'BW',
+                      value:
+                          '${_formatMhz(summary!.bandwidthMhz)} MHz',
+                    ),
+                  ],
+                ],
               ),
             ),
           SizedBox(
@@ -695,7 +821,7 @@ class _SpectrumPainter extends CustomPainter {
 
   static const Color _grid = Color(0x14FFFFFF);
 
-  double get _ceilingDb => uplink ? uplinkCeilingDbm : -20;
+  double get _ceilingDb => uplink ? uplinkCeilingDbm : -40;
   double get _floorDb => uplink ? 0 : -140;
   List<double> get _ticks => uplink
       ? <double>[
@@ -704,7 +830,7 @@ class _SpectrumPainter extends CustomPainter {
           uplinkCeilingDbm / 3,
           0,
         ]
-      : const <double>[-20, -60, -100, -140];
+      : const <double>[-40, -73, -107, -140];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -829,7 +955,7 @@ class _SpectrumPainter extends CustomPainter {
     final foot = math.max(0.3, carrier.bandwidthMhz * 0.03);
     final peak = uplink
         ? (uplinkPeakDbm ?? uplinkCeilingDbm)
-        : (carrier.levelDbm ?? -100).clamp(-140, -20).toDouble();
+        : (carrier.levelDbm ?? -100).clamp(-140, -40).toDouble();
     final mask = Path()
       ..moveTo(x(carrier.centerMhz - half - foot), y(_floorDb))
       ..lineTo(x(carrier.centerMhz - half + inset), y(peak))
@@ -865,9 +991,9 @@ class _SpectrumPainter extends CustomPainter {
     );
 
     final arrow = uplink ? '\u2191' : '\u2193';
-    final label =
-        '$arrow ${carrier.block.label} \u00b7 ${_mhz(carrier.centerMhz)} MHz '
-        '\u00b7 ${_mhz(carrier.bandwidthMhz)} MHz';
+    // Just the band: the strength, frequency and width live in the header, and
+    // the long green line used to run off the side of the page here.
+    final label = '$arrow ${carrier.block.label}';
     _text(
       canvas,
       label,

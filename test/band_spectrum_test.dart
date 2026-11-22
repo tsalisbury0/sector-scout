@@ -1,3 +1,4 @@
+import 'package:cell_tower_monitor/models/band_filters.dart';
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
 import 'package:cell_tower_monitor/widgets/band_spectrum.dart';
 import 'package:flutter/material.dart';
@@ -58,8 +59,7 @@ void main() {
         is5g: false,
         reported: 66,
       ).map((band) => band.band).toList();
-      expect(bands.first, 66, reason: 'the reported band leads');
-      expect(bands, containsAll(<int>[4, 10, 66]));
+      expect(bands, <int>[4, 10, 66], reason: 'narrowest first');
       expect(bands, isNot(contains(65)));
       expect(bands, isNot(contains(1)));
       expect(bands, isNot(contains(9)));
@@ -230,6 +230,17 @@ void main() {
         ),
         closeTo(5.75, 0.01),
       );
+      // Halfway down the dial the mask is only halfway up, so a usable
+      // signal does not pin the transmitter to its ceiling.
+      expect(
+        uplinkPeakDbm(
+          levelDbm: -100,
+          txPowerDbm: null,
+          inverse: true,
+          maxDbm: 23,
+        ),
+        closeTo(14.375, 0.01),
+      );
       // Weak downlink: transmit at the band's ceiling.
       expect(
         uplinkPeakDbm(
@@ -258,6 +269,31 @@ void main() {
       expect(maxUplinkDbm(14), 31);
       expect(maxUplinkDbm(41, is5g: true), 29);
       expect(maxUplinkDbm(78, is5g: true), 26);
+    });
+
+    test('band 106 is placed from the serving cell without carriers', () {
+      BandFilters.anterixB106 = true;
+      addTearDown(() => BandFilters.anterixB106 = false);
+      final sim = SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 42,
+            'arfcn': 3580,
+            'bands': <Object?>[8],
+            'mcc': '313',
+            'mnc': '700',
+            'dbm': -95,
+          },
+        ],
+      });
+      final carriers = spectrumCarriers(sim);
+      expect(carriers, hasLength(1));
+      expect(carriers.single.block.band, 106);
+      expect(carriers.single.centerMhz, closeTo(938.0, 0.001));
+      expect(carriers.single.bandwidthMhz, 3.0);
     });
 
     test('a TDD layer has one block for both directions', () {
@@ -352,7 +388,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('TDD · DOWNLINK AND UPLINK'), findsOneWidget);
+    expect(find.text('TDD · DL AND UL'), findsOneWidget);
     expect(find.textContaining('UPLINK · TX'), findsNothing);
   });
 

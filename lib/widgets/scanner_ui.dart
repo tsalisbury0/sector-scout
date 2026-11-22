@@ -166,7 +166,7 @@ class SimHeaderCard extends StatelessWidget {
               cell: legs[i].$2,
             ),
             // Each leg traces the reading printed directly above it on the
-            // same -140…-20 dBm scale, so an anchor at -107 and a secondary at
+            // same -140…-40 dBm scale, so an anchor at -107 and a secondary at
             // -117 sit where they really are relative to each other.
             if ((traces?[legs[i].$1]?.length ?? 0) > 1) ...[
               const SizedBox(height: 7),
@@ -483,7 +483,7 @@ class _LeaderPainter extends CustomPainter {
   return (low, high);
 }
 
-/// The level over the last minute or so, on a fixed -140…-20 dBm scale.
+/// The level over the last minute or so, on a fixed -140…-40 dBm scale.
 ///
 /// A fixed scale is what makes two readings comparable: a link at -107 and one
 /// at -117 are 10 dB apart on the meter above, and they are 10 dB apart here.
@@ -524,7 +524,7 @@ class _TracePainter extends CustomPainter {
 
   /// The scale every trace is drawn on, in dBm.
   static const int _floorDbm = -140;
-  static const int _ceilingDbm = -20;
+  static const int _ceilingDbm = -40;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -538,7 +538,7 @@ class _TracePainter extends CustomPainter {
     final grid = Paint()
       ..color = _grid
       ..strokeWidth = 1;
-    for (final dbm in const <int>[_ceilingDbm, -80, _floorDbm]) {
+    for (final dbm in const <int>[_ceilingDbm, -90, _floorDbm]) {
       canvas.drawLine(Offset(0, y(dbm)), Offset(size.width, y(dbm)), grid);
     }
 
