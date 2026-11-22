@@ -8,6 +8,11 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Which transport the phone is actually using. Without it a phone on
+         Wi-Fi still reports its mobile connection as CONNECTED, and the header
+         would light its arrows for traffic that is not moving. A normal
+         permission, granted at install. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Pinned signal notification: a foreground service is the only way an app
          can hold a notification the user cannot swipe away. `specialUse` is the
          honest type here (it is not media, sync or a call), and unlike dataSync

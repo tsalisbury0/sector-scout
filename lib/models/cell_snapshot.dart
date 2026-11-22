@@ -817,6 +817,7 @@ class SimReading {
     this.ims = const ImsAvailability(),
     this.dataState = -1,
     this.dataActivity = -1,
+    this.dataOnMobile = false,
   });
 
   factory SimReading.fromMap(Map<Object?, Object?> map) {
@@ -844,6 +845,7 @@ class SimReading {
       ims: ImsAvailability.fromMap(map['ims'] as Map<Object?, Object?>?),
       dataState: _int(map['dataState']) ?? -1,
       dataActivity: _int(map['dataActivity']) ?? -1,
+      dataOnMobile: map['dataOnMobile'] == true,
     );
   }
 
@@ -892,6 +894,42 @@ class SimReading {
   /// `TelephonyManager.getDataActivity()`: -1 unknown, 0 idle, 1 down,
   /// 2 up, 3 up and down, 4 dormant.
   final int dataActivity;
+
+  /// True when this is the slot carrying mobile data *and* the phone's default
+  /// network is cellular.
+  ///
+  /// [dataState] alone cannot answer that: a phone on Wi-Fi keeps its mobile
+  /// connection up in the background, so the state still reads `CONNECTED`
+  /// while nothing is being sent over it.
+  final bool dataOnMobile;
+
+  /// Whether mobile data is up and moving bytes in either direction.
+  ///
+  /// The spectrum page draws the uplink mask only while this holds: an idle,
+  /// suspended or disconnected link has no transmit picture to show.
+  bool get dataActive =>
+      dataOnMobile &&
+      dataState == 2 &&
+      (dataActivity == 1 || dataActivity == 2 || dataActivity == 3);
+
+  /// The direction pair the header draws under the technology badge, or null
+  /// when it draws none.
+  ///
+  /// No arrows without a mobile data connection in use: a slot with no SIM, a
+  /// phone on Wi-Fi, a suspended or disconnected link all read as nothing. A
+  /// connected but quiet link gets both arrows in the muted ink, so "up with no
+  /// traffic" still looks different from "no connection".
+  (bool, bool)? get dataArrows {
+    if (!dataOnMobile) return null;
+    // Connecting counts: the link is being brought up, not suspended.
+    if (dataState != 1 && dataState != 2) return null;
+    return switch (dataActivity) {
+      1 => (false, true),
+      2 => (true, false),
+      3 => (true, true),
+      _ => (false, false),
+    };
+  }
 
   /// The data connection as one line, e.g. `Connected · up + down`. Null when
   /// neither reading arrived.

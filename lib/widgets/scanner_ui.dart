@@ -114,10 +114,16 @@ class SimHeaderCard extends StatelessWidget {
               ),
               if (sim.isSatellite) ...[
                 const SizedBox(width: 7),
-                const SatelliteTag(),
+                _HeaderMark(
+                  arrows: sim.dataArrows,
+                  child: const SatelliteTag(),
+                ),
               ] else if (badge != null) ...[
                 const SizedBox(width: 7),
-                TechBadge(label: badge),
+                _HeaderMark(
+                  arrows: sim.dataArrows,
+                  child: TechBadge(label: badge),
+                ),
               ],
               if (dual) ...[
                 const SizedBox(width: 7),
@@ -211,6 +217,61 @@ class SimHeaderCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The technology badge with the mobile-data direction arrows beneath it.
+///
+/// The pair sits directly under the label the carrier name is read with, so the
+/// header answers "which radio" and "is it moving bytes, and which way" in one
+/// glance. Both arrows stay in the muted ink while the connection is up but
+/// quiet; neither is drawn when there is no mobile data to report.
+class _HeaderMark extends StatelessWidget {
+  const _HeaderMark({required this.child, required this.arrows});
+
+  final Widget child;
+
+  /// Null when the header should carry no arrows at all.
+  final (bool, bool)? arrows;
+
+  @override
+  Widget build(BuildContext context) {
+    final arrows = this.arrows;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        child,
+        if (arrows != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DataArrow(up: true, lit: arrows.$1),
+                const SizedBox(width: 1),
+                _DataArrow(up: false, lit: arrows.$2),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One direction arrow: white while that direction is carrying traffic, muted
+/// while the link is up but quiet.
+class _DataArrow extends StatelessWidget {
+  const _DataArrow({required this.up, required this.lit});
+
+  final bool up;
+  final bool lit;
+
+  @override
+  Widget build(BuildContext context) => Icon(
+    up ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+    size: 11,
+    color: lit ? AppColors.textPrimary : AppColors.textMuted,
+  );
 }
 
 /// One radio's level: the figure first, the meter to its right.

@@ -1574,9 +1574,10 @@ void main() {
   });
 
   group('mobile data', () {
-    SimReading reading({int? state, int? activity}) =>
+    SimReading reading({int? state, int? activity, bool mobile = true}) =>
         SimReading.fromMap(<Object?, Object?>{
           'slotIndex': 0,
+          'dataOnMobile': mobile,
           'dataState': ?state,
           'dataActivity': ?activity,
         });
@@ -1596,6 +1597,31 @@ void main() {
       final row = ServingView.qualityEntries(reading(state: 2, activity: 2))
           .firstWhere((entry) => entry.key == 'Mobile data');
       expect(row.value, 'Connected · up');
+    });
+
+    test('the header arrows follow the mobile connection', () {
+      // No SIM, no connection, or mobile data not in use: no arrows.
+      expect(reading().dataArrows, isNull);
+      expect(reading(state: 0, activity: 0).dataArrows, isNull);
+      expect(reading(state: 3, activity: 0).dataArrows, isNull);
+      expect(reading(state: 2, activity: 1, mobile: false).dataArrows, isNull);
+      // Connected and quiet: both arrows, neither lit.
+      expect(reading(state: 2, activity: 0).dataArrows, (false, false));
+      expect(reading(state: 1, activity: 0).dataArrows, (false, false));
+      // Connected with traffic: the moving direction is lit.
+      expect(reading(state: 2, activity: 1).dataArrows, (false, true));
+      expect(reading(state: 2, activity: 2).dataArrows, (true, false));
+      expect(reading(state: 2, activity: 3).dataArrows, (true, true));
+    });
+
+    test('the uplink mask needs live mobile data', () {
+      expect(reading(state: 2, activity: 1).dataActive, isTrue);
+      expect(reading(state: 2, activity: 2).dataActive, isTrue);
+      expect(reading(state: 2, activity: 3).dataActive, isTrue);
+      expect(reading(state: 2, activity: 0).dataActive, isFalse);
+      expect(reading(state: 2, activity: 4).dataActive, isFalse);
+      expect(reading(state: 3, activity: 1).dataActive, isFalse);
+      expect(reading(state: 2, activity: 1, mobile: false).dataActive, isFalse);
     });
   });
 }

@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.telephony.AccessNetworkConstants
 import android.telephony.CarrierConfigManager
@@ -146,6 +148,16 @@ object CellSnapshot {
         m["dataState"] = safe { tm?.dataState } ?: TelephonyManager.DATA_UNKNOWN
         m["dataActivity"] =
             safe { tm?.dataActivity } ?: TelephonyManager.DATA_ACTIVITY_NONE
+        // Which slot the traffic belongs to, and whether the phone is using it.
+        // getDataState() stays CONNECTED while a phone is on Wi-Fi, because the
+        // mobile connection is kept up in the background, so the arrows also
+        // need the default network to be cellular.
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val onCellular = safe {
+            cm?.getNetworkCapabilities(cm.activeNetwork)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        } == true
+        m["dataOnMobile"] = sub.isDefault && onCellular
         m["carrierName"] = sub.carrierName
         m["simState"] = simStateName(safe { tm?.simState } ?: TelephonyManager.SIM_STATE_UNKNOWN)
         m["networkTypeName"] = networkTypeName(

@@ -9,6 +9,10 @@ SimReading _band66({int earfcn = 66486, int bandwidthKhz = 10000}) =>
     SimReading.fromMap(<Object?, Object?>{
       'slotIndex': 0,
       'simState': 'READY',
+      'dataOnMobile': true,
+      'dataState': 2,
+      'dataActivity': 3,
+
       'carriers': <Object?>[
         <Object?, Object?>{'net': 13, 'band': 66, 'bw': bandwidthKhz},
       ],
@@ -372,6 +376,38 @@ void main() {
     expect(find.textContaining('UPLINK'), findsOneWidget);
   });
 
+  testWidgets('an idle mobile link hides the uplink panel', (tester) async {
+    final sim = SimReading.fromMap(<Object?, Object?>{
+      'slotIndex': 0,
+      'simState': 'READY',
+      'dataOnMobile': true,
+      'dataState': 2,
+      'dataActivity': 0,
+      'carriers': <Object?>[
+        <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000},
+      ],
+      'cells': <Object?>[
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': true,
+          'pci': 148,
+          'arfcn': 66486,
+          'bands': <Object?>[66],
+          'dbm': -89,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+        ),
+      ),
+    );
+    expect(find.text('DOWNLINK'), findsOneWidget);
+    expect(find.textContaining('UPLINK'), findsNothing);
+  });
+
   testWidgets('a TDD layer drawn once, labelled as both directions', (
     tester,
   ) async {
@@ -407,6 +443,9 @@ void main() {
   ) async {
     final sim = SimReading.fromMap(<Object?, Object?>{
       'slotIndex': 0,
+      'dataOnMobile': true,
+      'dataState': 2,
+      'dataActivity': 3,
       'carriers': <Object?>[
         <Object?, Object?>{'net': 13, 'band': 2, 'bw': 10000, 'pci': 100},
         <Object?, Object?>{'net': 19, 'band': 66, 'bw': 10000, 'pci': 148},
@@ -445,6 +484,9 @@ void main() {
   testWidgets('a supplemental downlink says it has no uplink', (tester) async {
     final sim = SimReading.fromMap(<Object?, Object?>{
       'slotIndex': 0,
+      'dataOnMobile': true,
+      'dataState': 2,
+      'dataActivity': 3,
       'carriers': <Object?>[
         <Object?, Object?>{'net': 13, 'band': 29, 'bw': 10000},
       ],
