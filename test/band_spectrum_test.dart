@@ -65,6 +65,16 @@ void main() {
       expect(bands, isNot(contains(9)));
     });
 
+    test('band 106 and band 8 are MFBI aliases', () {
+      final bands = bandsCovering(
+        936.5,
+        939.5,
+        is5g: false,
+        reported: 106,
+      ).map((band) => band.band).toList();
+      expect(bands, <int>[106, 8], reason: 'narrowest first');
+    });
+
     test('band 2 lists band 25, not band 1 or 3', () {
       final bands = bandsCovering(
         1930,

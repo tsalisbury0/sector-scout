@@ -88,7 +88,7 @@ List<BandBlock> bandsCovering(
     if (block == null) continue;
     if (block.high <= low || block.low >= high) continue;
     if (reportedPlan != null &&
-        !_mfbiCompatible(reportedPlan, plans[band])) {
+        !_mfbiCompatible(reported!, reportedPlan, band, plans[band])) {
       continue;
     }
     blocks.add(block);
@@ -110,10 +110,22 @@ List<BandBlock> bandsCovering(
 /// above their uplink, so one channel is all three. Band 65 sits 190 MHz above
 /// its own, which makes it a different band however much of the downlink it
 /// shares.
-bool _mfbiCompatible(BandPlan? reported, BandPlan? candidate) {
+bool _mfbiCompatible(
+  int reportedBand,
+  BandPlan? reported,
+  int candidateBand,
+  BandPlan? candidate,
+) {
   if (reported == null || candidate == null) return false;
   if (reported.isTdd != candidate.isTdd) return false;
   if (reported.isDlOnly != candidate.isDlOnly) return false;
+  // Band 106 and band 8 are configured as MFBI aliases on the utility
+  // network's SIBs even though their duplex spacing differs (39 vs 45 MHz):
+  // the relationship is published, not derivable from the blocks.
+  final pair = {reportedBand, candidateBand};
+  if (pair.contains(8) && pair.contains(106) && pair.length == 2) {
+    return true;
+  }
   final a = reported.uplinkOffset;
   final b = candidate.uplinkOffset;
   if (a == null || b == null) return false;
@@ -443,10 +455,12 @@ class _BandSpectrumState extends State<BandSpectrum> {
               uplinkPeakDbm: peak,
               uplinkCeilingDbm: maxTx.toDouble(),
               summary: selected,
+              // The level is already the header's STRENGTH; naming it again
+              // here is what pushed the caption into the numbers.
               title: inverse
-                  ? 'Uplink · inverse of downlink · ${peak.round()} dBm'
+                  ? 'Uplink · inverse'
                   : txPower == null
-                  ? 'Uplink · TX power not reported'
+                  ? 'Uplink · no TX read'
                   : 'Uplink · TX $txPower dBm',
             ),
         ],
@@ -738,6 +752,7 @@ class _SpectrumPanel extends StatelessWidget {
                     ),
                   ),
                   if (summary != null) ...[
+                    const SizedBox(width: 10),
                     _PanelStat(
                       label: 'STRENGTH',
                       value: statsLevel == null
@@ -914,6 +929,9 @@ class _SpectrumPainter extends CustomPainter {
     for (var mhz = (low / step).ceil() * step; mhz <= high; mhz += step) {
       final tick = x(mhz);
       canvas.drawLine(Offset(tick, rowTop), Offset(tick, rowTop + 3), grid);
+      // The last tick and the unit caption share the right edge; drawing both
+      // printed them on top of each other.
+      if (tick > right - 30) continue;
       _text(
         canvas,
         _mhz(mhz),
