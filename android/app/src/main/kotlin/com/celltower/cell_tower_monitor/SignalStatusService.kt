@@ -16,7 +16,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.Process
 import android.util.Log
 
 /**
@@ -92,8 +91,11 @@ class SignalStatusService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_EXIT) {
-            exitApp()
-            return START_NOT_STICKY
+            closeApp()
+            // The reading stays pinned: Exit closes the window, not the
+            // notification the user switched on, so the service keeps its
+            // normal sticky restart.
+            return START_STICKY
         }
         intent?.let { aliasB106 = it.getBooleanExtra(EXTRA_ALIAS, aliasB106) }
         intent?.let {
@@ -179,23 +181,19 @@ class SignalStatusService : Service() {
     }
 
     /**
-     * Closes the app from the notification's Exit action.
+     * Closes the app's window from the notification's Exit action.
      *
-     * Stopping the service alone would leave the task in Recents looking like an
-     * app still running, and an app the OS retires on its own is not what Exit
-     * means: this switches the reading off, clears the notification, closes the
-     * task and ends the process.
+     * The pinned reading is left alone. It is a service the user switched on,
+     * not part of the window, and clearing it here would make Exit a
+     * notification toggle — the one thing this action must not be. Closing the
+     * task is what swiping the app out of Recents does, so the shade keeps
+     * updating with nothing on screen and the switch stays on.
      */
-    private fun exitApp() {
+    private fun closeApp() {
         try {
-            prefs(this).edit().putBoolean(KEY_ENABLED, false).commit()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
             getSystemService(ActivityManager::class.java)
                 ?.appTasks
                 ?.forEach { task -> task.finishAndRemoveTask() }
-            stopSelf()
-            Process.killProcess(Process.myPid())
         } catch (e: Exception) {
             Log.w(TAG, "Exit from the notification failed: ${e.message}")
         }
