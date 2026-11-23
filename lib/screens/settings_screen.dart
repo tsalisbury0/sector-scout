@@ -116,6 +116,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Narrows band 30's downlink mask. Same deal: drawing only.
+  Future<void> _setB30RbLimited(bool value) async {
+    await AppSettings.setB30RbLimited(value);
+    if (mounted) setState(() {});
+  }
+
   Future<bool> _confirmNorthAmerica() async {
     final answer = await showDialog<bool>(
       context: context,
@@ -235,6 +241,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'transmit power, or 23 dBm when none is reported.',
                 value: AppSettings.uplinkInverse,
                 onChanged: (value) => unawaited(_setUplinkInverse(value)),
+              ),
+              const _CardDivider(),
+              _SettingsSwitch(
+                title: 'Band 30 RB-limited downlink',
+                subtitle:
+                    'Draws band 30\u2019s downlink 7 MHz wide inside its 10 MHz '
+                    'block \u2014 2353\u20132360 for a 2355 MHz carrier \u2014 the limit '
+                    'that keeps it clear of SiriusXM. The uplink keeps the '
+                    'modem\u2019s own 10 MHz.',
+                value: AppSettings.b30RbLimited,
+                onChanged: (value) => unawaited(_setB30RbLimited(value)),
               ),
             ],
           ),

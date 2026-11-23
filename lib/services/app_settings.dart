@@ -24,6 +24,13 @@ class AppSettings {
   /// the transmitter, so the plain graph is what a fresh install shows.
   static bool uplinkInverse = false;
 
+  /// Whether band 30's downlink is drawn 7 MHz wide inside its 10 MHz block,
+  /// the RB-limited shape that keeps it clear of SiriusXM.
+  ///
+  /// Off unless switched on: the modem reports a 10 MHz carrier, and a narrower
+  /// mask claims less spectrum than the channel is licensed for.
+  static bool b30RbLimited = false;
+
   /// Reads the stored switches into [BandFilters], before the first frame.
   static Future<void> load() async {
     try {
@@ -39,6 +46,7 @@ class AppSettings {
       BandFilters.anterixB106 = raw['anterixB106'] == true;
       AppSettings.carrierDetail = raw['carrierDetail'] != false;
       AppSettings.uplinkInverse = raw['uplinkInverse'] == true;
+      AppSettings.b30RbLimited = raw['b30RbLimited'] == true;
     } on PlatformException {
       // Nothing stored yet; the defaults stand.
     } on MissingPluginException {
@@ -72,6 +80,12 @@ class AppSettings {
   static Future<void> setUplinkInverse(bool value) async {
     uplinkInverse = value;
     await _store('uplinkInverse', value);
+  }
+
+  /// Narrows band 30's downlink mask to the RB-limited 7 MHz, or stops.
+  static Future<void> setB30RbLimited(bool value) async {
+    b30RbLimited = value;
+    await _store('b30RbLimited', value);
   }
 
   static Future<void> _store(String key, bool value) async {

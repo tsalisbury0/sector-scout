@@ -61,16 +61,18 @@ BandBlock? bandUplinkBlock(int band, {required bool is5g}) {
   return BandBlock(band: band, low: plan.ulLow!, high: high, is5g: is5g);
 }
 
-/// Every MFBI alias of the reported band whose block covers [low]–[high], the
-/// reported band first.
+/// Every MFBI alias of the reported band, wherever in that band the channel
+/// [low]–[high] sits.
 ///
 /// A frequency is not only one band, but only its MFBI aliases are the same
 /// spectrum. 2115 MHz sits inside band 66's 2110–2200 block, and also inside
 /// band 4's 2110–2155 and band 10's 2110–2170 — all three pair a 400 MHz duplex
-/// spacing, so the channel really is all three. Band 65 overlaps band 66's
-/// downlink while pairing a different uplink, and band 9 overlaps band 3
-/// without sharing its uplink: those are other bands, not aliases, and the
-/// graph no longer claims the channel belongs to them.
+/// spacing, so the channel really is all three. That stays true at 2175 MHz,
+/// past the end of bands 4 and 10: the rails are the numbering the spectrum
+/// carries, not just the part of it this channel overlaps. Band 65 overlaps
+/// band 66's downlink while pairing a different uplink, and band 9 overlaps
+/// band 3 without sharing its uplink: those are other bands, not aliases, and
+/// the graph does not claim the channel belongs to them.
 List<BandBlock> bandsCovering(
   double low,
   double high, {
@@ -80,15 +82,27 @@ List<BandBlock> bandsCovering(
 }) {
   final plans = is5g ? nrBandPlans : lteBandPlans;
   final reportedPlan = reported == null ? null : plans[reported];
+  final reportedBlock = reported == null
+      ? null
+      : (uplink
+            ? bandUplinkBlock(reported, is5g: is5g)
+            : bandBlock(reported, is5g: is5g));
   final blocks = <BandBlock>[];
   for (final band in plans.keys) {
     final block = uplink
         ? bandUplinkBlock(band, is5g: is5g)
         : bandBlock(band, is5g: is5g);
     if (block == null) continue;
-    if (block.high <= low || block.low >= high) continue;
-    if (reportedPlan != null &&
-        !_mfbiCompatible(reported!, reportedPlan, band, plans[band])) {
+    if (reportedPlan == null || reportedBlock == null) {
+      // No reported band to be an alias of, so only what the channel touches
+      // is drawn.
+      if (block.high <= low || block.low >= high) continue;
+    } else if (!_mfbiCompatible(reported!, reportedPlan, band, plans[band]) ||
+        block.high <= reportedBlock.low ||
+        block.low >= reportedBlock.high) {
+      // An alias is the same licensed spectrum, so its rail stays wherever
+      // inside the reported band the channel sits — 2175 MHz is band 66 only,
+      // but bands 4 and 10 are what that spectrum is numbered elsewhere.
       continue;
     }
     blocks.add(block);
@@ -144,6 +158,7 @@ class SpectrumCarrier {
     this.uplinkBlock,
     this.widthMhz,
     this.levelDbm,
+    this.shiftMhz = 0,
   });
 
   final RadioCarrier carrier;
@@ -166,18 +181,29 @@ class SpectrumCarrier {
 
   /// The width to draw when it is not the modem's own `bw`.
   ///
-  /// Band 106 is the one case: the modem reports the band's 5 MHz block while
-  /// the utility network runs 3 MHz at 938.0 MHz and 1.4 MHz elsewhere, and a
-  /// mask drawn 5 MHz wide would claim spectrum the carrier does not occupy.
+  /// Band 106 is one case: the modem reports the band's 5 MHz block while the
+  /// utility network runs 3 MHz at 938.0 MHz and 1.4 MHz elsewhere, and a mask
+  /// drawn 5 MHz wide would claim spectrum the carrier does not occupy. Band 30
+  /// with the RB-limited setting on is the other: 7 MHz of its 10 MHz downlink.
   final double? widthMhz;
+
+  /// How far the drawn downlink mask sits from [centerMhz].
+  ///
+  /// Band 30's RB limit trims the bottom of the licensed block, so the mask
+  /// keeps the block's top edge instead of staying centred on the channel.
+  final double shiftMhz;
 
   /// The received level of the cell feeding this carrier, in dBm — the height
   /// the downlink mask is drawn at.
   final int? levelDbm;
 
+  /// Where the mask is centred: the channel's own centre unless the band's
+  /// drawn downlink is pinned to one edge of it.
+  double get maskCenterMhz => centerMhz + shiftMhz;
+
   double get bandwidthMhz => widthMhz ?? carrier.bandwidthMhz;
-  double get lowMhz => centerMhz - bandwidthMhz / 2;
-  double get highMhz => centerMhz + bandwidthMhz / 2;
+  double get lowMhz => maskCenterMhz - bandwidthMhz / 2;
+  double get highMhz => maskCenterMhz + bandwidthMhz / 2;
   bool get is5g => block.is5g;
 
   /// A TDD layer has one block for both directions, so its downlink and uplink
@@ -188,12 +214,15 @@ class SpectrumCarrier {
   }
 
   /// The same carrier re-centred on its uplink, for the uplink graph.
+  ///
+  /// Band 30's narrower mask is a downlink limit; the uplink keeps the modem's
+  /// own width, so it is drawn without one.
   SpectrumCarrier asUplink() => SpectrumCarrier(
     carrier: carrier,
     centerMhz: uplinkMhz!,
     block: uplinkBlock!,
     role: role,
-    widthMhz: widthMhz,
+    widthMhz: block.band == 30 ? null : widthMhz,
     levelDbm: levelDbm,
   );
 
@@ -219,6 +248,12 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
       : (cellBandsList.isEmpty ? 0 : cellBandsList.first);
   final block = bandBlock(band, is5g: is5g);
   if (block == null) return null;
+  final drawn = _drawnWidth(
+    band: band,
+    centerMhz: center,
+    is5g: is5g,
+    reportedMhz: carrier.bandwidthMhz,
+  );
   return SpectrumCarrier(
     carrier: carrier,
     centerMhz: center,
@@ -226,7 +261,8 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
     role: _roleFor(sim, carrier, cell),
     uplinkMhz: cell?.uplinkMhz,
     uplinkBlock: bandUplinkBlock(band, is5g: is5g),
-    widthMhz: _drawnWidth(band: band, centerMhz: center, is5g: is5g),
+    widthMhz: drawn?.width,
+    shiftMhz: drawn?.shift ?? 0,
     // The same level the Carriers card prints, not the RSRP beside it: the two
     // differ by a few dB on most radios, and a graph that disagreed with the
     // number directly above it read as the wrong cell.
@@ -235,17 +271,32 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
 }
 
 /// The width to draw for a carrier whose modem reports something wider than
-/// the channel it is running.
+/// the channel it is running, and how far the mask sits off the channel centre.
 ///
-/// Band 106 is the one case the app knows: its 5 MHz block carries a 3 MHz
-/// channel at 938.0 MHz and a 1.4 MHz one anywhere else in the band.
-double? _drawnWidth({
+/// Band 106 is one case: its 5 MHz block carries a 3 MHz channel at 938.0 MHz
+/// and a 1.4 MHz one anywhere else in the band, centred on the reported
+/// frequency.
+///
+/// Band 30 with the setting on is the other: its downlink is RB-limited to
+/// 7 MHz of the licensed 10 to keep clear of SiriusXM. The limit trims the
+/// bottom of the block, so the mask keeps the block's top edge — 2353–2360 for
+/// a 2355 MHz carrier — and the uplink is left at the modem's own width.
+({double width, double shift})? _drawnWidth({
   required int band,
   required double centerMhz,
   required bool is5g,
+  required double reportedMhz,
 }) {
-  if (is5g || band != 106) return null;
-  return (centerMhz - 938.0).abs() < 0.005 ? 3.0 : 1.4;
+  if (is5g) return null;
+  if (band == 106) {
+    return (width: (centerMhz - 938.0).abs() < 0.005 ? 3.0 : 1.4, shift: 0);
+  }
+  if (band != 30 || !AppSettings.b30RbLimited) return null;
+  final width = math.min(7.0, reportedMhz);
+  if (width >= reportedMhz) return null;
+  final block = bandBlock(30, is5g: false);
+  final top = math.min(centerMhz + reportedMhz / 2, block?.high ?? centerMhz);
+  return (width: width, shift: top - width / 2 - centerMhz);
 }
 
 /// What a layer is doing: the anchor, a supplemental downlink, or one of the
@@ -306,7 +357,12 @@ List<SpectrumCarrier> spectrumCarriers(SimReading sim) {
           role: 'PCC',
           uplinkMhz: cell.uplinkMhz,
           uplinkBlock: bandUplinkBlock(106, is5g: false),
-          widthMhz: _drawnWidth(band: 106, centerMhz: center, is5g: false),
+          widthMhz: _drawnWidth(
+            band: 106,
+            centerMhz: center,
+            is5g: false,
+            reportedMhz: 3.0,
+          )?.width,
           levelDbm: cell.dbm,
         ),
       );
@@ -972,6 +1028,7 @@ class _SpectrumPainter extends CustomPainter {
     double Function(double) y,
     double bottom,
   ) {
+    final centre = carrier.maskCenterMhz;
     final half = carrier.bandwidthMhz / 2;
     final inset = math.max(0.15, carrier.bandwidthMhz * 0.02);
     final foot = math.max(0.3, carrier.bandwidthMhz * 0.03);
@@ -979,10 +1036,10 @@ class _SpectrumPainter extends CustomPainter {
         ? (uplinkPeakDbm ?? uplinkCeilingDbm)
         : (carrier.levelDbm ?? -100).clamp(-140, -40).toDouble();
     final mask = Path()
-      ..moveTo(x(carrier.centerMhz - half - foot), y(_floorDb))
-      ..lineTo(x(carrier.centerMhz - half + inset), y(peak))
-      ..lineTo(x(carrier.centerMhz + half - inset), y(peak))
-      ..lineTo(x(carrier.centerMhz + half + foot), y(_floorDb));
+      ..moveTo(x(centre - half - foot), y(_floorDb))
+      ..lineTo(x(centre - half + inset), y(peak))
+      ..lineTo(x(centre + half - inset), y(peak))
+      ..lineTo(x(centre + half + foot), y(_floorDb));
     final fill = Path.from(mask)..close();
 
     canvas.drawPath(
@@ -1019,7 +1076,7 @@ class _SpectrumPainter extends CustomPainter {
     _text(
       canvas,
       label,
-      Offset(x(carrier.centerMhz) - _measure(label, 8.5) / 2, bottom - 11),
+      Offset(x(centre) - _measure(label, 8.5) / 2, bottom - 11),
       size: 8.5,
       color: AppColors.accent,
       bold: true,

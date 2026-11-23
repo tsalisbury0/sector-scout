@@ -1,5 +1,6 @@
 import 'package:cell_tower_monitor/models/band_filters.dart';
 import 'package:cell_tower_monitor/models/cell_snapshot.dart';
+import 'package:cell_tower_monitor/services/app_settings.dart';
 import 'package:cell_tower_monitor/widgets/band_spectrum.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +91,18 @@ void main() {
       expect(bands, contains(25));
       expect(bands, isNot(contains(1)));
       expect(bands, isNot(contains(3)));
+    });
+
+    test('the aliases stay while the channel sits past their blocks', () {
+      // 2175 MHz is inside band 66 only: band 4 stops at 2155 and band 10 at
+      // 2170. They are still what that spectrum is numbered elsewhere.
+      final bands = bandsCovering(
+        2170,
+        2180,
+        is5g: false,
+        reported: 66,
+      ).map((band) => band.band).toList();
+      expect(bands, <int>[4, 10, 66], reason: 'narrowest first');
     });
 
     test('the rest are ordered narrowest first, so they nest', () {
@@ -231,6 +244,41 @@ void main() {
         placeCarrier(elsewhere, elsewhere.carriers.single)!.bandwidthMhz,
         1.4,
       );
+    });
+
+    test('band 30 draws its RB-limited downlink at the top of the block', () {
+      SimReading b30() => SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 30, 'bw': 10000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 20,
+            'arfcn': 9820,
+            'bands': <Object?>[30],
+            'dbm': -100,
+          },
+        ],
+      });
+      // 9820 is 2355: band 30's 10 MHz downlink, 2350–2360.
+      final plain = b30();
+      expect(placeCarrier(plain, plain.carriers.single)!.bandwidthMhz, 10);
+
+      AppSettings.b30RbLimited = true;
+      addTearDown(() => AppSettings.b30RbLimited = false);
+      final narrowSim = b30();
+      final narrow = placeCarrier(narrowSim, narrowSim.carriers.single)!;
+      expect(narrow.bandwidthMhz, 7);
+      expect(narrow.lowMhz, closeTo(2353, 0.01));
+      expect(narrow.highMhz, closeTo(2360, 0.01));
+      // The mask keeps the block's top edge rather than its centre.
+      expect(narrow.maskCenterMhz, closeTo(2356.5, 0.01));
+      // Only the downlink is limited: the uplink keeps its 10 MHz channel.
+      expect(narrow.asUplink().bandwidthMhz, 10);
+      expect(narrow.asUplink().shiftMhz, 0);
     });
 
     test('the inverse uplink mirrors the downlink and keeps a quarter', () {

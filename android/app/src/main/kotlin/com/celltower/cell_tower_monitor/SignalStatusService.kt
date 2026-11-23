@@ -1,5 +1,6 @@
 package com.celltower.cell_tower_monitor
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,15 +16,16 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
 import android.util.Log
 
 /**
  * Keeps the current SIM's signal in a pinned notification.
  *
  * A foreground service is the only way Android lets an app hold a notification
- * the user cannot swipe away: the notification is `setOngoing`, has no dismiss
- * action, and the service outlives the app's screen (and the task being swiped
- * out of Recents). Nothing here can survive an app force-stop, or the **Stop**
+ * the user cannot swipe away: the notification is `setOngoing`, its one action
+ * is **Exit**, and the service outlives the app's screen (and the task being
+ * swiped out of Recents). Nothing here can survive an app force-stop, or the **Stop**
  * button in Android 13+'s *Active apps* panel — that is the OS, not this app.
  *
  * The reading comes from [CellSnapshot] directly, so the notification keeps
@@ -89,6 +91,10 @@ class SignalStatusService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_EXIT) {
+            exitApp()
+            return START_NOT_STICKY
+        }
         intent?.let { aliasB106 = it.getBooleanExtra(EXTRA_ALIAS, aliasB106) }
         intent?.let {
             refreshTags(_satellites, it.getStringArrayExtra(EXTRA_SATELLITES))
@@ -172,12 +178,45 @@ class SignalStatusService : Service() {
         }
     }
 
+    /**
+     * Closes the app from the notification's Exit action.
+     *
+     * Stopping the service alone would leave the task in Recents looking like an
+     * app still running, and an app the OS retires on its own is not what Exit
+     * means: this switches the reading off, clears the notification, closes the
+     * task and ends the process.
+     */
+    private fun exitApp() {
+        try {
+            prefs(this).edit().putBoolean(KEY_ENABLED, false).commit()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+            getSystemService(ActivityManager::class.java)
+                ?.appTasks
+                ?.forEach { task -> task.finishAndRemoveTask() }
+            stopSelf()
+            Process.killProcess(Process.myPid())
+        } catch (e: Exception) {
+            Log.w(TAG, "Exit from the notification failed: ${e.message}")
+        }
+    }
+
     private fun notificationFor(lines: SignalSummary.Lines?): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        // The action row only appears on the expanded notification, which is
+        // where the detail lines live: Exit is there to close the app without a
+        // trip through Android's app info page.
+        val exit = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, SignalStatusService::class.java).setAction(ACTION_EXIT),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
@@ -207,6 +246,13 @@ class SignalStatusService : Service() {
             .setColor(COLOUR)
             .setContentIntent(open)
             .setSubText(lines?.slotLabel)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.ic_exit),
+                    "Exit",
+                    exit,
+                ).build(),
+            )
             .apply {
                 // From Android 13 the shade draws its own icon for a foreground
                 // service on One UI, so the badge is repeated at content size
@@ -296,6 +342,8 @@ class SignalStatusService : Service() {
         private const val EXTRA_ALIAS = "alias_b106"
         private const val EXTRA_SATELLITES = "satellite_plmns"
         private const val EXTRA_LTE_MS = "lte_m_plmns"
+        private const val ACTION_EXIT =
+            "com.celltower.cell_tower_monitor.action.EXIT"
 
         private fun prefs(context: Context) =
             context.getSharedPreferences("signal_status", Context.MODE_PRIVATE)

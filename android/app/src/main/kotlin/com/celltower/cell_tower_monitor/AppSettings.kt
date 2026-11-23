@@ -21,6 +21,7 @@ object AppSettings {
     const val KEY_B106 = "anterixB106"
     const val KEY_CARRIER_DETAIL = "carrierDetail"
     const val KEY_UPLINK_INVERSE = "uplinkInverse"
+    const val KEY_B30_RB_LIMITED = "b30RbLimited"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -55,6 +56,13 @@ object AppSettings {
     fun uplinkInverse(context: Context): Boolean =
         prefs(context).getBoolean(KEY_UPLINK_INVERSE, false)
 
+    /**
+     * Band 30's downlink is RB-limited to 7 MHz, **off** unless switched on.
+     * It changes how the spectrum page is drawn, nothing the service reports.
+     */
+    fun b30RbLimited(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_B30_RB_LIMITED, false)
+
     /** Every switch, in the shape the method channel returns. */
     fun all(context: Context): Map<String, Any> = mapOf(
         KEY_TMOBILE to tmobileBands(context),
@@ -62,6 +70,7 @@ object AppSettings {
         KEY_B106 to anterixB106(context),
         KEY_CARRIER_DETAIL to carrierDetail(context),
         KEY_UPLINK_INVERSE to uplinkInverse(context),
+        KEY_B30_RB_LIMITED to b30RbLimited(context),
     )
 
     /**
