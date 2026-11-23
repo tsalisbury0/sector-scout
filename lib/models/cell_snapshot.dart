@@ -500,9 +500,11 @@ class CellTower {
   /// Uplink centre frequency in MHz, or null when the band does not pair one
   /// (LTE band 29 is downlink-only, and an unknown band means no guess).
   ///
-  /// The uplink is priced from its own block, and clamped to it: bands 66 and
-  /// 70 (and NR n66) have a narrower uplink than downlink, so the top of the
-  /// band pairs with a frequency the block no longer contains.
+  /// The uplink is priced from its own block. Bands 66 and 70 (and NR n66 and
+  /// n70) run their downlink past the end of their uplink, so the tail of those
+  /// bands pairs with a frequency the block does not contain. That spectrum is
+  /// a supplemental downlink: the uplink is null rather than clamped to the
+  /// block's top edge, which would name a frequency the channel never uses.
   double? get uplinkMhz {
     final dl = downlinkMhz;
     if (dl == null) return null;
@@ -510,8 +512,11 @@ class CellTower {
       final plan = nrBandPlans[_primaryBand];
       final offset = plan?.uplinkOffset;
       if (plan == null || offset == null) return null;
+      final uplink = dl + offset;
       final high = plan.ulHigh;
-      return high == null ? dl + offset : math.min(dl + offset, high);
+      // See the LTE branch below: n66's and n70's last megahertz pair nothing.
+      if (high != null && uplink > high + 0.001) return null;
+      return uplink;
     }
     // Band 106 sits 39 MHz below its downlink, whatever raster the channel
     // number came in on.
@@ -531,7 +536,8 @@ class CellTower {
     }
     final ul = plan.ulLow! + 0.1 * (channel - plan.first);
     final high = plan.ulHigh;
-    return high == null ? ul : math.min(ul, high);
+    if (high != null && ul > high + 0.001) return null;
+    return ul;
   }
 
   /// LTE band 29 — the 700 MHz supplemental downlink.

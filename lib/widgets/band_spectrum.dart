@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/band_tables.dart';
+import '../models/band_widths.dart';
 import '../models/cell_snapshot.dart';
 import '../services/app_settings.dart';
 import '../theme/app_colors.dart';
@@ -248,7 +249,7 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
       : (cellBandsList.isEmpty ? 0 : cellBandsList.first);
   final block = bandBlock(band, is5g: is5g);
   if (block == null) return null;
-  final drawn = _drawnWidth(
+  final drawn = drawnDownlinkWidth(
     band: band,
     centerMhz: center,
     is5g: is5g,
@@ -270,38 +271,12 @@ SpectrumCarrier? placeCarrier(SimReading sim, RadioCarrier carrier) {
   );
 }
 
-/// The width to draw for a carrier whose modem reports something wider than
-/// the channel it is running, and how far the mask sits off the channel centre.
-///
-/// Band 106 is one case: its 5 MHz block carries a 3 MHz channel at 938.0 MHz
-/// and a 1.4 MHz one anywhere else in the band, centred on the reported
-/// frequency.
-///
-/// Band 30 with the setting on is the other: its downlink is RB-limited to
-/// 7 MHz of the licensed 10 to keep clear of SiriusXM. The limit trims the
-/// bottom of the block, so the mask keeps the block's top edge — 2353–2360 for
-/// a 2355 MHz carrier — and the uplink is left at the modem's own width.
-({double width, double shift})? _drawnWidth({
-  required int band,
-  required double centerMhz,
-  required bool is5g,
-  required double reportedMhz,
-}) {
-  if (is5g) return null;
-  if (band == 106) {
-    return (width: (centerMhz - 938.0).abs() < 0.005 ? 3.0 : 1.4, shift: 0);
-  }
-  if (band != 30 || !AppSettings.b30RbLimited) return null;
-  final width = math.min(7.0, reportedMhz);
-  if (width >= reportedMhz) return null;
-  final block = bandBlock(30, is5g: false);
-  final top = math.min(centerMhz + reportedMhz / 2, block?.high ?? centerMhz);
-  return (width: width, shift: top - width / 2 - centerMhz);
-}
-
 /// What a layer is doing: the anchor, a supplemental downlink, or one of the
 /// aggregated carriers. An NR layer names itself.
 String _roleFor(SimReading sim, RadioCarrier carrier, CellTower? cell) {
+  // A downlink with no uplink is a supplemental one: band 29's whole block, or
+  // the 2180–2200 tail of 66 whose uplink would sit above 1780.
+  if (cell != null && cell.uplinkMhz == null) return 'SDL';
   if (carrier.tech == CellTech.nr) return '5G';
   if (lteBandPlans[carrier.band]?.isDlOnly ?? false) return 'SDL';
   final serving = sim.lteServing;
@@ -357,7 +332,7 @@ List<SpectrumCarrier> spectrumCarriers(SimReading sim) {
           role: 'PCC',
           uplinkMhz: cell.uplinkMhz,
           uplinkBlock: bandUplinkBlock(106, is5g: false),
-          widthMhz: _drawnWidth(
+          widthMhz: drawnDownlinkWidth(
             band: 106,
             centerMhz: center,
             is5g: false,
@@ -504,9 +479,9 @@ class _BandSpectrumState extends State<BandSpectrum> {
               message: selected.role.startsWith('CA')
                   ? 'An aggregated layer has no uplink mask here: the uplink '
                         'is drawn for the anchor only.'
-                  : '${selected.block.label} is a supplemental downlink: the '
-                        'band pairs no uplink, so there is no transmit '
-                        'spectrum to draw for this layer.',
+                  : 'This layer is a supplemental downlink: its downlink '
+                        'has no uplink to pair, so there is no transmit '
+                        'spectrum to draw.',
             )
           else
             _SpectrumPanel(
@@ -781,6 +756,11 @@ class _SpectrumPanel extends StatelessWidget {
         : (uplink
               ? (uplinkPeakDbm ?? uplinkCeilingDbm)
               : summary!.levelDbm);
+    // The uplink copy is drawn at its own width — band 30's 7 MHz limit is a
+    // downlink one — so the panel must not repeat the downlink's number.
+    final statsWidth = summary == null
+        ? null
+        : (uplink ? carriers.first.bandwidthMhz : summary!.bandwidthMhz);
 
     return Container(
       decoration: BoxDecoration(
@@ -829,8 +809,9 @@ class _SpectrumPanel extends StatelessWidget {
                     const SizedBox(width: 9),
                     _PanelStat(
                       label: 'BW',
-                      value:
-                          '${_formatMhz(summary!.bandwidthMhz)} MHz',
+                      value: statsWidth == null
+                          ? '\u2014'
+                          : '${_formatMhz(statsWidth)} MHz',
                     ),
                   ],
                 ],

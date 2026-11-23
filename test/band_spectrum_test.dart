@@ -358,6 +358,61 @@ void main() {
       expect(carriers.single.bandwidthMhz, 3.0);
     });
 
+    test('the unpaired tail of band 66 is a supplemental downlink', () {
+      SimReading b66(int arfcn) => SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 66, 'bw': 10000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 148,
+            'arfcn': arfcn,
+            'bands': <Object?>[66],
+            'dbm': -95,
+          },
+        ],
+      });
+      // 67186 is 2185: its paired uplink would be 1785, past the block.
+      final tailSim = b66(67186);
+      final tail = placeCarrier(tailSim, tailSim.carriers.single)!;
+      expect(tail.role, 'SDL');
+      expect(tail.uplinkMhz, isNull);
+      expect(tail.buttonLabel, 'SDL B66');
+
+      // 66486 is 2115: paired, so still the anchor.
+      final pairedSim = b66(66486);
+      expect(placeCarrier(pairedSim, pairedSim.carriers.single)!.role, 'PCC');
+    });
+
+    test('the unpaired tail of band 70 is a supplemental downlink too', () {
+      SimReading b70(int arfcn) => SimReading.fromMap(<Object?, Object?>{
+        'slotIndex': 0,
+        'carriers': <Object?>[
+          <Object?, Object?>{'net': 13, 'band': 70, 'bw': 10000},
+        ],
+        'cells': <Object?>[
+          <Object?, Object?>{
+            'type': 'LTE',
+            'registered': true,
+            'pci': 90,
+            'arfcn': arfcn,
+            'bands': <Object?>[70],
+            'dbm': -97,
+          },
+        ],
+      });
+      // 2000 MHz pairs 1700; 2015 would pair 1715, past band 70's 1710 top.
+      final pairedSim = b70(68386);
+      expect(placeCarrier(pairedSim, pairedSim.carriers.single)!.role, 'PCC');
+      final tailSim = b70(68536);
+      final tail = placeCarrier(tailSim, tailSim.carriers.single)!;
+      expect(tail.role, 'SDL');
+      expect(tail.uplinkMhz, isNull);
+    });
+
     test('a TDD layer has one block for both directions', () {
       final sim = SimReading.fromMap(<Object?, Object?>{
         'slotIndex': 0,
@@ -422,6 +477,42 @@ void main() {
     expect(find.text('PCC B66'), findsOneWidget);
     expect(find.text('DOWNLINK'), findsOneWidget);
     expect(find.textContaining('UPLINK'), findsOneWidget);
+  });
+
+  testWidgets('band 30 keeps the downlink limit out of the uplink panel', (
+    tester,
+  ) async {
+    AppSettings.b30RbLimited = true;
+    addTearDown(() => AppSettings.b30RbLimited = false);
+    final sim = SimReading.fromMap(<Object?, Object?>{
+      'slotIndex': 0,
+      'dataOnMobile': true,
+      'dataState': 2,
+      'dataActivity': 0,
+      'carriers': <Object?>[
+        <Object?, Object?>{'net': 13, 'band': 30, 'bw': 10000},
+      ],
+      'cells': <Object?>[
+        <Object?, Object?>{
+          'type': 'LTE',
+          'registered': true,
+          'pci': 20,
+          'arfcn': 9820,
+          'bands': <Object?>[30],
+          'dbm': -100,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: BandSpectrum(sim: sim)),
+        ),
+      ),
+    );
+    // The downlink is drawn 7 MHz wide; the uplink keeps its 10.
+    expect(find.text('7 MHz'), findsOneWidget);
+    expect(find.text('10 MHz'), findsOneWidget);
   });
 
   testWidgets('the uplink mask follows mobile data, not the traffic', (
@@ -565,6 +656,6 @@ void main() {
       ),
     );
     expect(find.text('SDL B29'), findsOneWidget);
-    expect(find.textContaining('pairs no uplink'), findsOneWidget);
+    expect(find.textContaining('has no uplink to pair'), findsOneWidget);
   });
 }

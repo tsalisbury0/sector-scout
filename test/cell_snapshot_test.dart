@@ -1517,20 +1517,32 @@ void main() {
       expect(b24.uplinkLabel, '1646.50 MHz');
     });
 
-    test('clamps an uplink to its own block on the asymmetric bands', () {
-      // Band 66 carries 90 MHz down but only 70 MHz up, so the top of the
-      // band has no paired uplink frequency above 1780.
+    test('the unpaired tail of 66 and 70 has no uplink to name', () {
+      // Band 66 carries 90 MHz down but only 70 MHz up, so 2180–2200 pairs
+      // 1780–1800 — spectrum the band does not have. That part is an SDL.
       final top = cell(type: 'LTE', arfcn: 67335, bands: const [66]);
       expect(top.downlinkLabel, '2199.90 MHz');
-      expect(top.uplinkLabel, '1780.00 MHz');
+      expect(top.uplinkLabel, isNull);
 
       final low = cell(type: 'LTE', arfcn: 66436, bands: const [66]);
       expect(low.downlinkLabel, '2110.00 MHz');
       expect(low.uplinkLabel, '1710.00 MHz');
 
+      final edge = cell(type: 'LTE', arfcn: 67136, bands: const [66]);
+      expect(edge.downlinkLabel, '2180.00 MHz');
+      expect(edge.uplinkLabel, '1780.00 MHz');
+
       final nr66 = cell(type: 'NR', arfcn: 438000, bands: const [66]);
       expect(nr66.downlinkLabel, '2190.00 MHz');
-      expect(nr66.uplinkLabel, '1780.00 MHz');
+      expect(nr66.uplinkLabel, isNull);
+
+      // Band 70 pairs 15 MHz of uplink with 25 MHz of downlink.
+      final nr70 = cell(type: 'NR', arfcn: 401000, bands: const [70]);
+      expect(nr70.downlinkLabel, '2005.00 MHz');
+      expect(nr70.uplinkLabel, '1705.00 MHz');
+      final tail70 = cell(type: 'NR', arfcn: 403000, bands: const [70]);
+      expect(tail70.downlinkLabel, '2015.00 MHz');
+      expect(tail70.uplinkLabel, isNull);
     });
 
     test('names an NR band from a channel none of the old bands claimed', () {

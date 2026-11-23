@@ -1,3 +1,4 @@
+import '../models/band_widths.dart';
 import '../models/cell_snapshot.dart';
 import 'carrier_names.dart';
 
@@ -192,7 +193,18 @@ class ServingView {
   /// unique, so both cards dropped the row while CA was being reported.
   static String? bandwidthFor(CellTower cell, SimReading? sim) {
     final match = sim?.carrierFor(cell);
-    return match == null ? null : '${shortMhz(match.bandwidthMhz)} MHz';
+    return match == null ? null : widthLabel(match);
+  }
+
+  /// The width of [carrier] as one line: `10 MHz`, or `7↓/10↑ MHz` when band
+  /// 30's RB-limited downlink is drawn. The two directions no longer share one
+  /// width then, and a single number would misstate one of them.
+  static String widthLabel(RadioCarrier carrier) {
+    final down = carrier.tech == CellTech.nr || carrier.band != 30
+        ? null
+        : b30RbLimitedMhz(carrier.bandwidthMhz);
+    if (down == null) return '${shortMhz(carrier.bandwidthMhz)} MHz';
+    return '${shortMhz(down)}\u2193/${shortMhz(carrier.bandwidthMhz)}\u2191 MHz';
   }
 
   static String _techLabel(CellTech tech) => switch (tech) {
@@ -270,6 +282,7 @@ class CarrierRow {
   String? get frequency =>
       cell == null ? null : ServingView.neighbourFrequency(cell!);
 
-  /// `10 MHz` — the one thing only the privileged reader can say.
-  String get width => '${ServingView.shortMhz(carrier.bandwidthMhz)} MHz';
+  /// `10 MHz`, or both directions when band 30's downlink is RB-limited — the
+  /// one thing only the privileged reader can say.
+  String get width => ServingView.widthLabel(carrier);
 }
