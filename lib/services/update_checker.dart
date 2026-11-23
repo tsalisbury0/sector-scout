@@ -14,11 +14,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// reinstall of itself, and to know this build is a beta — the stable of the
 /// same version numbers is then still offered as an update, since moving off
 /// the prerelease matters even when the numbers match.
-const String kBuildTag = 'v2.1.0-beta10';
+const String kBuildTag = 'v2.1.0-beta11';
 
 /// The version string of this build, used where Android's versionName is not
 /// reachable (the desktop has no platform to ask).
-const String kVersionText = '2.1.0-beta10';
+const String kVersionText = '2.1.0-beta11';
 
 /// Where releases are listed. The repo is public, so this reads without a
 /// token: the unauthenticated 60-queries-an-hour cap suits a once-per-launch
