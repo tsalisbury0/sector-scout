@@ -9,12 +9,14 @@ import '../desktop/scenario.dart';
 import '../desktop/test_source.dart';
 import '../models/band_filters.dart';
 import '../models/cell_snapshot.dart';
+import '../services/app_settings.dart';
 import '../services/ble_desktop.dart';
 import '../services/lan_discovery.dart';
 import '../services/remote_client.dart';
 import '../services/serving_view.dart';
 import '../services/update_checker.dart';
 import '../theme/app_colors.dart';
+import '../widgets/band_spectrum.dart';
 import '../widgets/signal_bars.dart';
 import '../widgets/tech_badge.dart';
 
@@ -105,6 +107,25 @@ class _DesktopHomeState extends State<DesktopHome> {
     BandFilters.cbrs = _corrections;
   }
 
+  /// Adopts the display switches a phone sent with its reading.
+  ///
+  /// A card is one phone's screen, so its corrections, band 30 limit and
+  /// uplink mode come from that phone rather than from this window's toggle.
+  /// A phone too old to send them leaves the local choices alone.
+  void _applySnapshotSettings(CellSnapshot snapshot) {
+    final settings = snapshot.settings;
+    if (settings.isEmpty) return;
+    BandFilters.tmobileBands =
+        settings['tmobileBands'] ?? BandFilters.tmobileBands;
+    BandFilters.cbrs = settings['cbrs'] ?? BandFilters.cbrs;
+    BandFilters.anterixB106 =
+        settings['anterixB106'] ?? BandFilters.anterixB106;
+    AppSettings.b30RbLimited =
+        settings['b30RbLimited'] ?? AppSettings.b30RbLimited;
+    AppSettings.uplinkInverse =
+        settings['uplinkInverse'] ?? AppSettings.uplinkInverse;
+  }
+
   /// One sweep at a time: a Bluetooth read takes seconds, and two of them
   /// reset each other's cursor on the phone mid-payload.
   Future<void> _pollAll() async {
@@ -130,6 +151,7 @@ class _DesktopHomeState extends State<DesktopHome> {
       final snapshot = await peer.fetch();
       if (!mounted) return;
       setState(() {
+        _applySnapshotSettings(snapshot);
         peer.snapshot = snapshot;
         peer.error = null;
         peer.lastOk = DateTime.now();
@@ -1162,6 +1184,25 @@ class _SimBlock extends StatelessWidget {
               const SizedBox(width: 7),
               TechBadge(label: badge),
             ],
+            // The same direction arrows the phone's header draws: hidden with
+            // no mobile data, grey while it is quiet, white per direction.
+            if (sim.dataArrows case (final up, final down)) ...[
+              const SizedBox(width: 6),
+              Text(
+                '\u2191',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: up ? AppColors.textPrimary : AppColors.textMuted,
+                ),
+              ),
+              Text(
+                '\u2193',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: down ? AppColors.textPrimary : AppColors.textMuted,
+                ),
+              ),
+            ],
             if (showSlot) ...[
               const SizedBox(width: 7),
               Container(
@@ -1268,6 +1309,10 @@ class _SimBlock extends StatelessWidget {
               rows: ServingView.carrierRows(sim),
               totals: ServingView.carrierTotals(sim),
             ),
+          ],
+          if (spectrumCarriers(sim).isNotEmpty) ...[
+            const _SectionHeading('Spectrum'),
+            BandSpectrum(sim: sim),
           ],
           const _SectionHeading('Radio quality'),
           _DetailCard(rows: ServingView.qualityEntries(sim)),

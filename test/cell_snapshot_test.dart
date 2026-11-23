@@ -1585,6 +1585,27 @@ void main() {
     });
   });
 
+  group('sharing', () {
+    test('a shared reading carries the display switches', () {
+      // The desktop draws the same cells, so the phone's corrections, band 30
+      // limit and uplink mode travel with the payload instead of being guessed.
+      final snapshot = CellSnapshot.fromMap(<Object?, Object?>{
+        'sims': <Object?>[],
+      });
+      final shared = snapshot.toJsonMap();
+      final settings = shared['settings'] as Map<Object?, Object?>;
+      expect(settings['tmobileBands'], isA<bool>());
+      expect(settings['cbrs'], isA<bool>());
+      expect(settings['anterixB106'], isA<bool>());
+      expect(settings['b30RbLimited'], isA<bool>());
+      expect(settings['uplinkInverse'], isA<bool>());
+      // A peer parses that payload, so it reads the same switches back.
+      final peer = CellSnapshot.fromMap(shared);
+      expect(peer.settings['b30RbLimited'], isFalse);
+      expect(peer.settings.keys, contains('uplinkInverse'));
+    });
+  });
+
   group('mobile data', () {
     SimReading reading({int? state, int? activity, bool mobile = true}) =>
         SimReading.fromMap(<Object?, Object?>{

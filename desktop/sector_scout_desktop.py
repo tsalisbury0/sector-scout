@@ -186,6 +186,392 @@ def lte_band_from_earfcn(earfcn: int | None) -> int | None:
             return band
     return None
 
+# --- spectrum --------------------------------------------------------------
+# The phone's spectrum page, on the same band tables the rest of this console
+# reads. Placements come from the frequencies it already prints, so a mask sits
+# exactly where the card says the channel is.
+
+DISPLAY_SETTINGS = {
+    "tmobileBands": True,
+    "cbrs": True,
+    "anterixB106": False,
+    "b30RbLimited": False,
+    "uplinkInverse": False,
+}
+
+
+def apply_settings(settings: dict | None) -> None:
+    """Adopt a phone's own display switches, so the card matches its screen."""
+    if not isinstance(settings, dict):
+        return
+    for key in DISPLAY_SETTINGS:
+        value = settings.get(key)
+        if isinstance(value, bool):
+            DISPLAY_SETTINGS[key] = value
+
+
+def plan_for(band: int | None, tech: str | None) -> dict | None:
+    if not band or band <= 0:
+        return None
+    return (NR_BANDS if tech == "NR" else LTE_BANDS).get(band)
+
+
+def block_for(
+    band: int | None, tech: str | None, uplink: bool = False
+) -> tuple[float, float] | None:
+    """A band's block in MHz, down or up, or None when it has none."""
+    plan = plan_for(band, tech)
+    if plan is None or plan.get("dlLow") is None:
+        return None
+    step = 0.005 if tech == "NR" else 0.1
+    width = (plan["last"] - plan["first"] + 1) * step
+    if not uplink:
+        return (plan["dlLow"], plan["dlLow"] + width)
+    low = plan.get("ulLow")
+    if low is None:
+        return None
+    high = low + width
+    top = plan.get("ulHigh")
+    return (low, min(high, top) if top is not None else high)
+
+
+def _uplink_offset(plan: dict) -> float | None:
+    if plan.get("ulLow") is None:
+        return None
+    return plan["ulLow"] - plan["dlLow"]
+
+
+def mfbi_compatible(
+    a_plan: dict, a_band: int, b_plan: dict, b_band: int
+) -> bool:
+    """The phone's rule: the same duplex mode and the same duplex spacing."""
+    if (a_plan.get("mode") == "TDD") != (b_plan.get("mode") == "TDD"):
+        return False
+    if (a_plan.get("ulLow") is None) != (b_plan.get("ulLow") is None):
+        return False
+    if {a_band, b_band} == {8, 106}:
+        return True
+    a, b = _uplink_offset(a_plan), _uplink_offset(b_plan)
+    return a is not None and b is not None and abs(a - b) < 0.001
+
+
+def bands_covering(
+    low: float,
+    high: float,
+    tech: str | None,
+    reported: int | None,
+    uplink: bool = False,
+) -> list[dict]:
+    """Every MFBI alias of the reported band, narrowest first.
+
+    An alias is the same licensed spectrum, so its rail stays wherever inside
+    the reported band the channel sits — 2175 MHz is band 66 only, and bands 4
+    and 10 are still what that spectrum is numbered elsewhere.
+    """
+    plans = NR_BANDS if tech == "NR" else LTE_BANDS
+    reported_plan = plans.get(reported) if reported else None
+    reported_block = block_for(reported, tech, uplink) if reported else None
+    blocks: list[dict] = []
+    for band, plan in plans.items():
+        block = block_for(band, tech, uplink)
+        if block is None:
+            continue
+        if reported_plan is None or reported_block is None:
+            if block[1] <= low or block[0] >= high:
+                continue
+        elif (
+            not mfbi_compatible(reported_plan, reported, plan, band)
+            or block[1] <= reported_block[0]
+            or block[0] >= reported_block[1]
+        ):
+            continue
+        blocks.append({"band": band, "tech": tech, "low": block[0], "high": block[1]})
+    blocks.sort(key=lambda b: (b["high"] - b["low"], b["band"]))
+    return blocks
+
+
+def mobile_data_in_use(sim: dict) -> bool:
+    """Mobile data is the connection in use, whatever the traffic is doing."""
+    return bool(sim.get("dataOnMobile")) and _int_or(sim.get("dataState")) in (1, 2)
+
+
+def data_arrows(sim: dict) -> tuple[bool, bool] | None:
+    """(up, down) for the header, or None when there is no data connection."""
+    if not mobile_data_in_use(sim):
+        return None
+    activity = _int_or(sim.get("dataActivity")) or 0
+    return activity in (1, 3), activity in (2, 3)
+
+
+MAX_UPLINK_DBM = {
+    ("LTE", 14): 31,
+    ("LTE", 40): 26,
+    ("LTE", 41): 26,
+    ("NR", 41): 29,
+    ("NR", 77): 29,
+    ("NR", 78): 26,
+    ("NR", 79): 29,
+}
+
+
+def uplink_peak(level: int | None, tx: int | None, ceiling: float) -> float:
+    """The phone's uplink mask height: reported power, or the mirror of the link."""
+    if tx is not None:
+        return max(0.0, min(float(tx), ceiling))
+    if not DISPLAY_SETTINGS["uplinkInverse"] or level is None:
+        return ceiling
+    db = max(-140, min(-40, level))
+    weakness = (
+        (-40 - db) / 60 * 0.5 if db >= -100 else 0.5 + (-100 - db) / 40 * 0.5
+    )
+    return ceiling * (0.25 + 0.75 * weakness)
+
+
+def placed_carriers(sim: dict, cells: list[dict]) -> list[dict]:
+    """Each component carrier where the cell it matches puts it on the dial."""
+    placed: list[dict] = []
+    listed = [c for c in (sim.get("carriers") or []) if isinstance(c, dict)]
+    if not listed:
+        # Band 106 does not need the privileged reader: one serving cell on the
+        # utility network is the whole carrier.
+        serving = next((c for c in cells if c.get("registered")), None)
+        if serving is not None and 106 in (serving.get("bands") or []):
+            listed = [{"net": 13, "band": 106, "bw": 3000}]
+    for index, carrier in enumerate(listed):
+        band = _int_or(carrier.get("band"))
+        khz = _int_or(carrier.get("bw")) or 0
+        if not band or khz <= 0:
+            continue
+        tech = carrier_tech(carrier)
+        pci = _int_or(carrier.get("pci"))
+        matches = [
+            c
+            for c in cells
+            if band_number(c) == band or band in (c.get("bands") or [])
+        ]
+        if pci is not None:
+            exact = [c for c in matches if _int_or(c.get("pci")) == pci]
+            if exact:
+                matches = exact
+        cell = next(
+            (c for c in matches if c.get("registered")),
+            matches[0] if matches else None,
+        )
+        if cell is None:
+            continue
+        center = downlink_mhz(cell)
+        if center is None:
+            continue
+        reported = khz / 1000
+        width = reported
+        shift = 0.0
+        if tech != "NR" and band == 106:
+            width = 3.0 if abs(center - 938.0) < 0.005 else 1.4
+        elif (
+            tech != "NR"
+            and band == 30
+            and DISPLAY_SETTINGS["b30RbLimited"]
+            and reported > 7.0
+        ):
+            block = block_for(30, "LTE")
+            top = min(center + reported / 2, block[1]) if block else center + reported / 2
+            width = 7.0
+            shift = top - width / 2 - center
+        up = uplink_mhz(cell)
+        if up is None:
+            role = "SDL"
+        elif tech == "NR":
+            role = "5G"
+        elif cell.get("registered"):
+            role = "PCC"
+        else:
+            role = "CA"
+        placed.append(
+            {
+                "band": band,
+                "tech": tech,
+                "center": center,
+                "reported": reported,
+                "width": width,
+                "shift": shift,
+                "low": center + shift - width / 2,
+                "high": center + shift + width / 2,
+                "dbm": _int_or(cell.get("dbm")),
+                "uplink": up,
+                "tx": _int_or(carrier.get("txPower")),
+                "role": role,
+                "index": index,
+            }
+        )
+    return placed
+
+
+def dashed_line(
+    canvas: tk.Canvas, x1: float, y1: float, x2: float, y2: float
+) -> None:
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length <= 0:
+        return
+    step = (x2 - x1) / length, (y2 - y1) / length
+    travelled = 0.0
+    while travelled < length:
+        end = min(travelled + 3, length)
+        canvas.create_line(
+            x1 + step[0] * travelled,
+            y1 + step[1] * travelled,
+            x1 + step[0] * end,
+            y1 + step[1] * end,
+            fill="#475569",
+        )
+        travelled += 6
+
+
+def draw_spectrum(
+    canvas: tk.Canvas,
+    carriers: list[dict],
+    bands: list[dict],
+    *,
+    uplink: bool = False,
+    peak: float | None = None,
+    ceiling: float = 23.0,
+    width: int = 620,
+) -> None:
+    """Masks, their rails, and the dial — the phone's chart, squared off."""
+    plot_height = 86
+    band_row = 13
+    axis_height = 18
+    top = 8
+    gutter = 30
+    bottom = top + plot_height
+    canvas.configure(
+        width=width,
+        height=bottom + 8 + len(bands) * band_row + axis_height + 4,
+    )
+    low = min([b["low"] for b in bands] + [c["low"] for c in carriers])
+    high = max([b["high"] for b in bands] + [c["high"] for c in carriers])
+    margin = (high - low) * 0.02 or 1.0
+    low -= margin
+    high += margin
+    floor, ceiling_db = (0.0, ceiling) if uplink else (-140.0, -40.0)
+
+    def x(mhz: float) -> float:
+        return gutter + (mhz - low) / (high - low) * (width - gutter)
+
+    def y(db: float) -> float:
+        return top + (ceiling_db - db) / (ceiling_db - floor) * plot_height
+
+    third = (ceiling_db - floor) / 3
+    for db in (ceiling_db, ceiling_db - third, ceiling_db - 2 * third, floor):
+        canvas.create_line(gutter, y(db), width, y(db), fill="#16202E")
+        canvas.create_text(
+            2,
+            y(db),
+            text=f"{int(db)}",
+            fill=MUTED,
+            font=("Segoe UI", 7),
+            anchor="w",
+        )
+
+    for carrier in carriers:
+        centre = carrier["center"] + carrier.get("shift", 0.0)
+        half = carrier["width"] / 2
+        level = peak if (uplink and peak is not None) else carrier.get("dbm")
+        level = -100.0 if level is None else max(floor, min(ceiling_db, level))
+        inset = max(0.15, carrier["width"] * 0.02)
+        foot = max(0.3, carrier["width"] * 0.03)
+        points = [
+            x(centre - half - foot),
+            y(floor),
+            x(centre - half + inset),
+            y(level),
+            x(centre + half - inset),
+            y(level),
+            x(centre + half + foot),
+            y(floor),
+        ]
+        canvas.create_polygon(points, fill="#14322B", outline="")
+        canvas.create_line(*points, fill=ACCENT, width=1)
+        for edge in (centre - half, centre + half):
+            dashed_line(canvas, x(edge), y(level), x(edge), bottom)
+        arrow = "↑" if uplink else "↓"
+        canvas.create_text(
+            x(centre),
+            bottom - 8,
+            text=f"{arrow} {band_name(carrier['band'], carrier['tech'])}",
+            fill=ACCENT,
+            font=("Segoe UI", 8, "bold"),
+        )
+
+    row_top = bottom + 8
+    active = {(c["band"], c["tech"]) for c in carriers}
+    for band in bands:
+        rect = (
+            x(band["low"]),
+            row_top,
+            x(band["high"]),
+            row_top + band_row - 3,
+        )
+        lit = (band["band"], band["tech"]) in active
+        canvas.create_rectangle(
+            *rect,
+            fill="#16302A" if lit else SURFACE_ALT,
+            outline=ACCENT if lit else BORDER,
+        )
+        canvas.create_text(
+            rect[0] + 4,
+            rect[1] + 2,
+            text=band_name(band["band"], band["tech"]),
+            fill=ACCENT if lit else MUTED,
+            font=("Segoe UI", 7, "bold"),
+            anchor="nw",
+        )
+        if rect[2] - rect[0] > 78:
+            canvas.create_text(
+                rect[2] - 4,
+                rect[1] + 2,
+                text=f"{band['low']:.0f}-{band['high']:.0f}",
+                fill=MUTED,
+                font=("Segoe UI", 7),
+                anchor="ne",
+            )
+        row_top += band_row
+
+    span = high - low
+    step = (
+        1
+        if span <= 6
+        else 2
+        if span <= 16
+        else 5
+        if span <= 40
+        else 10
+        if span <= 110
+        else 50
+        if span <= 260
+        else 100
+    )
+    tick = math.ceil(low / step) * step
+    while tick <= high:
+        canvas.create_line(x(tick), row_top, x(tick), row_top + 3, fill=BORDER)
+        canvas.create_text(
+            x(tick),
+            row_top + 4,
+            text=f"{tick:.0f}",
+            fill=MUTED,
+            font=("Segoe UI", 7),
+            anchor="n",
+        )
+        tick += step
+    canvas.create_text(
+        width - 4,
+        row_top + 4,
+        text="MHz",
+        fill=MUTED,
+        font=("Segoe UI", 7),
+        anchor="ne",
+    )
+
+
 TMOBILE_PLMNS = {"310260", "312190"}
 
 
@@ -224,12 +610,22 @@ def band_label(cell: dict, corrections: bool = True) -> str | None:
     labels: list[str] = []
     for band in bands:
         if corrections and tech == "NR":
-            if band == 77 and mhz is not None and 3550 <= mhz < 3700:
+            if (
+                band == 77
+                and mhz is not None
+                and 3550 <= mhz < 3700
+                and DISPLAY_SETTINGS["cbrs"]
+            ):
                 labels.append(band_name(48, tech))
                 continue
             # The app only re-codes a band the modem named on its own: a cell
             # listing several keeps the numbers it reported.
-            if len(bands) == 1 and plmn in TMOBILE_PLMNS and arfcn:
+            if (
+                len(bands) == 1
+                and plmn in TMOBILE_PLMNS
+                and arfcn
+                and DISPLAY_SETTINGS["tmobileBands"]
+            ):
                 if band == 38 and 499200 <= arfcn <= 537999:
                     labels.append(band_name(41, tech))
                     continue
@@ -518,7 +914,16 @@ def carrier_rows(carriers: list[dict]) -> list[tuple[str, str]]:
                 label = f"{label} SDL"
         else:
             label = "band not reported"
-        width_text = f"{mhz_text(width)} MHz" if width else "width not reported"
+        if (
+            tech != "NR"
+            and band == 30
+            and DISPLAY_SETTINGS["b30RbLimited"]
+            and width > 7000
+        ):
+            shown = 7000
+            width_text = f"{mhz_text(shown)}\u2193/{mhz_text(width)}\u2191 MHz"
+        else:
+            width_text = f"{mhz_text(width)} MHz" if width else "width not reported"
         pci = _int_or(carrier.get("pci"))
         rows.append(
             (f"{label} · {width_text}", "—" if pci is None else f"PCI {pci}")
@@ -753,7 +1158,11 @@ def uplink_mhz(cell: dict) -> float | None:
         offset = plan["ulLow"] - plan["dlLow"]
         high = plan.get("ulHigh")
         up = down + offset
-        return min(up, high) if high is not None else up
+        # n66 and n70 run their downlink past the uplink: that tail pairs a
+        # frequency the block does not have, so it is a supplemental downlink.
+        if high is not None and up > high + 0.001:
+            return None
+        return up
     plan = LTE_BANDS.get(band)
     if not plan or plan.get("ulLow") is None or arfcn is None:
         return None
@@ -761,7 +1170,9 @@ def uplink_mhz(cell: dict) -> float | None:
         return down
     up = plan["ulLow"] + 0.1 * (arfcn - plan["first"])
     high = plan.get("ulHigh")
-    return min(up, high) if high is not None else up
+    if high is not None and up > high + 0.001:
+        return None
+    return up
 
 
 def serving_entries(
@@ -3781,6 +4192,10 @@ class DesktopApp(tk.Tk):
         head = tk.Frame(card, bg=BG)
         head.pack(fill="x", padx=4)
         snapshot = phone.snapshot
+        if isinstance(snapshot, dict):
+            # The phone's own switches travel with its reading, so its card
+            # reads the way its screen does.
+            apply_settings(snapshot.get("settings"))
         title = phone.label
         if snapshot and snapshot.get("deviceModel"):
             title = str(snapshot["deviceModel"])
@@ -3905,6 +4320,17 @@ class DesktopApp(tk.Tk):
             tk.Label(line, text=badge, bg=SURFACE,
                      fg=ACCENT if five_g else MUTED,
                      font=("Segoe UI", 8, "bold")).pack(side="left", padx=(7, 0))
+        arrows = data_arrows(sim)
+        if arrows is not None:
+            up_lit, down_lit = arrows
+            tk.Label(
+                line, text="\u2191", bg=SURFACE,
+                fg=TEXT if up_lit else MUTED, font=("Segoe UI", 10),
+            ).pack(side="left", padx=(7, 0))
+            tk.Label(
+                line, text="\u2193", bg=SURFACE,
+                fg=TEXT if down_lit else MUTED, font=("Segoe UI", 10),
+            ).pack(side="left")
         tk.Label(
             line, text=f"SIM {int(sim.get('slotIndex', 0)) + 1}",
             bg=SURFACE_ALT, fg=MUTED, font=("Segoe UI", 7),
@@ -3976,6 +4402,7 @@ class DesktopApp(tk.Tk):
             if carriers:
                 heading("Carrier aggregation")
                 self._detail_card(body, carrier_rows(carriers))
+            self._spectrum(body, sim, cells)
             heading("Radio quality")
             self._detail_card(body, quality_entries(cells))
 
@@ -3984,6 +4411,116 @@ class DesktopApp(tk.Tk):
             count = f" ({len(neighbours)})" if neighbours else ""
             heading(f"Neighbour cells{count}")
             self._neighbour_card(body, neighbours)
+
+    def _spectrum(self, parent: tk.Frame, sim: dict, cells: list[dict]) -> None:
+        """The phone's spectrum page: masks, MFBI rails and the uplink."""
+        placed = placed_carriers(sim, cells)
+        if not placed:
+            return
+        anchor = next(
+            (c for c in placed if c["role"] in ("PCC", "5G")), placed[0]
+        )
+        rails = bands_covering(
+            anchor["low"], anchor["high"], anchor["tech"], anchor["band"]
+        )
+        if not rails:
+            block = block_for(anchor["band"], anchor["tech"])
+            if block is None:
+                return
+            rails = [
+                {
+                    "band": anchor["band"],
+                    "tech": anchor["tech"],
+                    "low": block[0],
+                    "high": block[1],
+                }
+            ]
+
+        caption = tk.Frame(parent, bg=SURFACE)
+        caption.pack(fill="x", pady=(12, 4))
+        tk.Label(
+            caption,
+            text=(
+                f"DOWNLINK · {band_name(anchor['band'], anchor['tech'])} · "
+                f"{anchor['center'] + anchor['shift']:.1f} MHz · "
+                f"{mhz_text(int(round(anchor['width'] * 1000)))} MHz"
+            ),
+            bg=SURFACE, fg=MUTED, font=("Segoe UI", 8, "bold"), anchor="w",
+        ).pack(side="left")
+        down = tk.Canvas(
+            parent, bg=SURFACE, highlightthickness=1,
+            highlightbackground=BORDER,
+        )
+        down.pack(fill="x")
+        draw_spectrum(down, placed, rails)
+
+        if not mobile_data_in_use(sim) or anchor["uplink"] is None:
+            return
+        ceiling = float(MAX_UPLINK_DBM.get((anchor["tech"], anchor["band"]), 23))
+        peak = uplink_peak(anchor["dbm"], anchor.get("tx"), ceiling)
+        up_width = (
+            anchor["reported"]
+            if anchor["band"] == 30 and anchor["tech"] != "NR"
+            else anchor["width"]
+        )
+        uplink = dict(anchor)
+        uplink.update(
+            {
+                "center": anchor["uplink"],
+                "shift": 0.0,
+                "width": up_width,
+                "low": anchor["uplink"] - up_width / 2,
+                "high": anchor["uplink"] + up_width / 2,
+            }
+        )
+        up_rails = bands_covering(
+            uplink["low"],
+            uplink["high"],
+            uplink["tech"],
+            uplink["band"],
+            uplink=True,
+        )
+        if not up_rails:
+            block = block_for(anchor["band"], anchor["tech"], uplink=True)
+            up_rails = (
+                [
+                    {
+                        "band": anchor["band"],
+                        "tech": anchor["tech"],
+                        "low": block[0],
+                        "high": block[1],
+                    }
+                ]
+                if block
+                else rails
+            )
+        uplink_caption = tk.Frame(parent, bg=SURFACE)
+        uplink_caption.pack(fill="x", pady=(8, 4))
+        mode = (
+            "calculated"
+            if DISPLAY_SETTINGS["uplinkInverse"]
+            else (
+                f"TX {anchor['tx']} dBm"
+                if anchor.get("tx") is not None
+                else "no TX read"
+            )
+        )
+        tk.Label(
+            uplink_caption,
+            text=(
+                f"UPLINK · {band_name(anchor['band'], anchor['tech'])} · "
+                f"{anchor['uplink']:.1f} MHz · {mode}"
+            ),
+            bg=SURFACE, fg=MUTED, font=("Segoe UI", 8, "bold"), anchor="w",
+        ).pack(side="left")
+        up = tk.Canvas(
+            parent, bg=SURFACE, highlightthickness=1,
+            highlightbackground=BORDER,
+        )
+        up.pack(fill="x")
+        draw_spectrum(
+            up, [uplink], up_rails, uplink=True, peak=peak, ceiling=ceiling
+        )
 
     def _primary_meter(self, parent: tk.Frame, cell: dict | None) -> None:
         dbm = _int_or(cell.get("dbm")) if cell else None
@@ -4176,7 +4713,7 @@ class DesktopApp(tk.Tk):
         self.destroy()
 
 
-APP_VERSION = "2.1.0-beta12"
+APP_VERSION = "2.1.0-beta13"
 RELEASES_URL = (
     "https://api.github.com/repos/tsalisbury0/sector-scout/releases?per_page=10"
 )

@@ -981,9 +981,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Band 106 can place its own mask from the serving cell alone, so this
     // asks what the spectrum page can draw rather than what carriers exist.
     final canSpectrum = spectrumCarriers(sim).isNotEmpty;
+    // Cell and Radio are one tab: the radio rows describe the cell above
+    // them, and splitting a single LTE/NR leg across two places made the reader
+    // join them back up by band and PCI.
     final tabs = <String>[
       'Cell',
-      'Radio',
       'Carriers',
       if (canSpectrum) 'Spectrum',
       if (hasNeighbours) 'Neighbours',
@@ -1054,11 +1056,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final paired = sim.isNsa && lte != null && nr != null;
 
     switch (tab) {
-      case 'Radio':
-        return [
-          const SizedBox(height: 6),
-          ScannerRows(entries: _qualityEntries(sim)),
-        ];
       case 'Carriers':
         if (sim.carriers.isEmpty) {
           return [
@@ -1151,7 +1148,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 2),
           ScannerRows(
-            entries: _servingEntries(paired ? lte : sim.serving!, sim: sim),
+            entries: [
+              ..._servingEntries(paired ? lte : sim.serving!, sim: sim),
+              // The readings the Radio tab used to hold, on the cell they
+              // belong to: one card per LTE/NR leg.
+              ...ServingView.qualityFor(paired ? lte : sim.serving!, null),
+            ],
           ),
           if (paired) ...[
             const SizedBox(height: 18),
@@ -1171,11 +1173,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 2),
             ScannerRows(
-              entries: _servingEntries(
-                nr,
-                gnbEstimate: sim.nsaGnbEstimate,
-                sim: sim,
-              ),
+              entries: [
+                ..._servingEntries(
+                  nr,
+                  gnbEstimate: sim.nsaGnbEstimate,
+                  sim: sim,
+                ),
+                ...ServingView.qualityFor(nr, null),
+              ],
             ),
           ],
           if (sim.lteSecondaries.isNotEmpty) ...[
@@ -1195,11 +1200,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(height: 2),
             for (final secondary in sim.lteSecondaries) ...[
               ScannerRows(
-                entries: _servingEntries(
-                  secondary,
-                  fallbackPlmn: sim.registeredPlmn,
-                  sim: sim,
-                ),
+                entries: [
+                  ..._servingEntries(
+                    secondary,
+                    fallbackPlmn: sim.registeredPlmn,
+                    sim: sim,
+                  ),
+                  ...ServingView.qualityFor(secondary, null),
+                ],
               ),
               const SizedBox(height: 8),
             ],
@@ -1247,9 +1255,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         fallbackPlmn: fallbackPlmn,
         sim: sim,
       );
-
-  List<MapEntry<String, String>> _qualityEntries(SimReading sim) =>
-      ServingView.qualityEntries(sim);
 
   Widget _permissionCard() {
     final permanentlyDenied = _locationStatus?.isPermanentlyDenied ?? false;

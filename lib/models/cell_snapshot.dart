@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../services/app_settings.dart';
 import 'band_filters.dart';
 import 'band_tables.dart';
 
@@ -1376,6 +1377,21 @@ class CellSnapshot {
 
   int get cellCount => sims.fold(0, (sum, sim) => sum + sim.cells.length);
 
+  /// The display switches this phone sent with the reading.
+  ///
+  /// A peer draws the same cells from the same payload, so the phone's band
+  /// corrections, band 30 limit and uplink mode have to travel with it or the
+  /// desktop card disagrees with the screen the user is looking at.
+  Map<String, bool> get settings {
+    final rawSettings = raw['settings'];
+    if (rawSettings is! Map) return const {};
+    return {
+      for (final entry in rawSettings.entries)
+        if (entry.key != null && entry.value is bool)
+          entry.key.toString(): entry.value as bool,
+    };
+  }
+
   /// SIMs that are present and ready, in slot order.
   List<SimReading> get activeSims =>
       sims.where((sim) => sim.hasSim).toList()..sort(
@@ -1406,6 +1422,13 @@ class CellSnapshot {
     if (rawSims is! List) return raw;
     return {
       ...raw,
+      'settings': {
+        'tmobileBands': BandFilters.tmobileBands,
+        'cbrs': BandFilters.cbrs,
+        'anterixB106': BandFilters.anterixB106,
+        'b30RbLimited': AppSettings.b30RbLimited,
+        'uplinkInverse': AppSettings.uplinkInverse,
+      },
       'sims': [
         for (final sim in rawSims)
           if (sim is Map<Object?, Object?>)
